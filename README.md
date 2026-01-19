@@ -398,6 +398,61 @@ research-scholar-agent/
 5. **Multi-language Support**: Support for papers in multiple languages
 6. **Real-time Collaboration**: WebSocket-based real-time features
 
+## 🚀 Deployment (Render — recommended for quick realtime-capable hosting)
+
+This repo is ready to deploy using Docker. The app is split into three services that can be deployed independently on Render (or Railway/Fly): `backend`, `ai-service`, and `frontend`. Render supports Docker deployments and provides managed databases (MongoDB) which is recommended for production.
+
+High-level steps (Render):
+
+1. Sign in to Render and connect your GitHub repository `https://github.com/711GHOST/Research-Scholar-Agent`.
+2. Create a managed MongoDB on Render (Databases → New Database → MongoDB). Save the connection string.
+3. For each service create a new Web Service:
+    - Service: **backend**
+       - Environment: `Docker` (select Dockerfile)
+       - Repo: `Research-Scholar-Agent`, Branch: `main`, Root: `backend`
+       - Dockerfile Path: `backend/Dockerfile`
+       - Instance Type: starter/free (or as needed)
+       - Environment Variables (set these in Render service settings):
+          - `PORT=5000`
+          - `NODE_ENV=production`
+          - `MONGODB_URI=<your-render-mongodb-connection-string>`
+          - `JWT_SECRET=<choose-a-secure-secret>`
+          - `JWT_EXPIRE=7d`
+          - `AI_SERVICE_URL=https://<ai-service-service>.onrender.com` (replace with actual AI service URL after creating it)
+          - `FRONTEND_URL=https://<frontend-service>.onrender.com`
+
+    - Service: **ai-service**
+       - Environment: `Docker`
+       - Repo: `Research-Scholar-Agent`, Branch: `main`, Root: `ai-service`
+       - Dockerfile Path: `ai-service/Dockerfile`
+       - Environment Variables:
+          - `PORT=8000`
+
+    - Service: **frontend**
+       - Environment: `Docker`
+       - Repo: `Research-Scholar-Agent`, Branch: `main`, Root: `frontend`
+       - Dockerfile Path: `frontend/Dockerfile`
+       - Environment Variables:
+          - `REACT_APP_API_URL=https://<backend-service>.onrender.com`
+
+4. After creating the `ai-service` and `frontend`, update `AI_SERVICE_URL` and `FRONTEND_URL` for the `backend` service to match the deployed service URLs Render provides.
+5. Deploy. Render will build each service from its Dockerfile and expose them as public services. Use the live URLs to test the application.
+
+Notes & tips:
+- For production keep `JWT_SECRET` strong and do not commit secrets to the repo.
+- If you want private internal communication between services, enable Render's Private Services / Internal Networking (requires paid plan).
+- If you prefer MongoDB Atlas instead of Render DB, create an Atlas cluster and set `MONGODB_URI` accordingly.
+
+Local quick deploy (same behavior as Render):
+
+```powershell
+# from project root
+docker-compose up -d
+```
+
+Want me to create an optional GitHub Actions workflow to build the Docker images (and push to a registry) or a `render.yaml` to automate Render infra creation? Say “yes — create workflow” or “yes — create render.yaml” and I will add it.
+
+
 ## 🧪 Testing
 
 ### Manual Testing Checklist
