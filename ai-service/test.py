@@ -24,4 +24,4 @@ headers = {"x-api-key": api_key}
 # Send the API request
 response = requests.get(url, params=query_params, headers=headers).json()
 
-# print(json.dumps(response, indent=2))
+print(json.dumps(response, indent=2))

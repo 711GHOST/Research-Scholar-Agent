@@ -15,7 +15,7 @@ class AIAnalyzer:
 
     def __init__(self):
         self.client = genai.Client(api_key=GEMINI_API_KEY)
-        self.model_name = "gemini-flash-latest"
+        self.model_name = "gemini-flash-lite-latest"
 
     # ---------- PAPER ANALYSIS ----------
 

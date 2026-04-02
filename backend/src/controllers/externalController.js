@@ -53,8 +53,17 @@ const searchExternal = async (req, res) => {
       'paperId,title,authors,year,url,venue,abstract,isOpenAccess,openAccessPdf'
 
     const headers = {}
-    if (process.env.SEMANTIC_SCHOLAR_API_KEY) {
-      headers['x-api-key'] = process.env.SEMANTIC_SCHOLAR_API_KEY
+    const ssKey = process.env.SEMANTIC_SCHOLAR_API_KEY
+    if (ssKey) {
+      headers['x-api-key'] = ssKey
+      try {
+        const masked = `${ssKey.slice(0, 4)}...${ssKey.slice(-4)}`
+        console.log('Using SEMANTIC_SCHOLAR_API_KEY:', masked)
+      } catch (e) {
+        console.log('Using SEMANTIC_SCHOLAR_API_KEY: [present]')
+      }
+    } else {
+      console.log('SEMANTIC_SCHOLAR_API_KEY not set in backend environment')
     }
 
     console.log('External search request:', {
