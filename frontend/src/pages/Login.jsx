@@ -1,20 +1,30 @@
 import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
-  Container,
+  Box,
+  Grid,
   Paper,
   TextField,
   Button,
   Typography,
-  Box,
   Alert,
   CircularProgress,
+  InputAdornment,
+  IconButton,
+  Link,
+  Stack,
 } from '@mui/material'
+import EmailIcon from '@mui/icons-material/Email'
+import LockIcon from '@mui/icons-material/Lock'
+import Visibility from '@mui/icons-material/Visibility'
+import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { useAuth } from '../context/AuthContext'
+import AuthHero from '../components/AuthHero'
 
 const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
@@ -24,82 +34,99 @@ const Login = () => {
     e.preventDefault()
     setError('')
     setLoading(true)
-
     const result = await login(email, password)
-
-    if (result.success) {
-      navigate('/dashboard')
-    } else {
-      setError(result.message || 'Login failed')
-    }
-
     setLoading(false)
+    if (result.success) navigate('/dashboard')
+    else setError(result.message || 'Login failed')
   }
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+    <Grid container sx={{ minHeight: '100vh' }}>
+      <AuthHero />
+      <Grid
+        item
+        xs={12}
+        md={5}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            Research Scholar Agent
+        <Paper variant="outlined" sx={{ p: 4, width: '100%', maxWidth: 420 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+            Welcome back
           </Typography>
-          <Typography variant="h6" component="h2" gutterBottom align="center" color="text.secondary">
-            Sign In
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            Sign in to your Research Scholar Agent account.
           </Typography>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
 
           <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              margin="normal"
-              required
-              autoComplete="email"
-            />
-            <TextField
-              fullWidth
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              margin="normal"
-              required
-              autoComplete="current-password"
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Sign In'}
-            </Button>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                size="medium"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <EmailIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                fullWidth
+                size="medium"
+                label="Password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <LockIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword((s) => !s)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                type="submit"
+                fullWidth
+                size="large"
+                variant="contained"
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={24} /> : 'Sign In'}
+              </Button>
+            </Stack>
           </form>
 
-          <Box textAlign="center">
-            <Typography variant="body2">
-              Don't have an account? <Link to="/register">Sign Up</Link>
-            </Typography>
-          </Box>
+          <Typography variant="body2" align="center" sx={{ mt: 3 }}>
+            Don&apos;t have an account?{' '}
+            <Link component={RouterLink} to="/register" sx={{ fontWeight: 600 }}>
+              Create one
+            </Link>
+          </Typography>
         </Paper>
-      </Box>
-    </Container>
+      </Grid>
+    </Grid>
   )
 }
 

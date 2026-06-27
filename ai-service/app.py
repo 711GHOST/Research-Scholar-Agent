@@ -1,57 +1,60 @@
 """
 AI Service - Research Scholar Agent
-FastAPI microservice for AI-powered research paper analysis
+FastAPI microservice for AI-powered research paper analysis.
 
-This service provides:
-- PDF text extraction
-- Section-wise summarization
-- Keyword & topic extraction
-- Research gap & question generation
-- Related work suggestions
-
-Automation Context: This is the AI automation engine that processes
-research papers and generates insights automatically.
+Security:
+- This service must never be exposed publicly. It only accepts calls that carry
+  the shared `x-internal-secret` header (when AI_SERVICE_SECRET is configured).
+- CORS is restricted to the backend origin(s).
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from config import PORT
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
 import base64
+import binascii
 import io
-from datetime import datetime
 import time
+from datetime import datetime
 
+from config import PORT, AI_SERVICE_SECRET, AI_ALLOWED_ORIGINS, USE_GEMINI
 from services.pdf_extractor import PDFExtractor
 from services.nlp_processor import NLPProcessor
 from services.ai_analyzer import AIAnalyzer
 
-# Initialize FastAPI app
 app = FastAPI(
     title="Research Scholar Agent AI Service",
     description="AI-powered research paper analysis microservice",
-    version="1.0.0"
+    version="1.1.0",
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=AI_ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type", "x-internal-secret"],
 )
 
-# Initialize services
 pdf_extractor = PDFExtractor()
 nlp_processor = NLPProcessor()
 ai_analyzer = AIAnalyzer()
 
+# Reject PDFs whose decoded size exceeds this (defense against memory abuse).
+MAX_PDF_BYTES = 30 * 1024 * 1024
 
-# Request/Response Models
+
+async def verify_internal_secret(x_internal_secret: Optional[str] = Header(default=None)):
+    """Require the shared secret when one is configured."""
+    if AI_SERVICE_SECRET:
+        if not x_internal_secret or x_internal_secret != AI_SERVICE_SECRET:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
+
+
 class AnalyzePaperRequest(BaseModel):
-    fileName: str
+    fileName: str = Field(..., max_length=512)
     fileContent: str  # Base64 encoded PDF
 
 
@@ -69,8 +72,8 @@ class AnalyzePaperResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
-    context: Dict[str, Any]
+    message: str = Field(..., max_length=8000)
+    context: Dict[str, Any] = {}
 
 
 class ChatResponse(BaseModel):
@@ -79,156 +82,92 @@ class ChatResponse(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
-# Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {
         "success": True,
         "message": "AI Service is running",
-        "timestamp": datetime.now().isoformat()
+        "geminiEnabled": USE_GEMINI,
+        "timestamp": datetime.now().isoformat(),
     }
 
 
 @app.post("/ai/analyze-paper", response_model=AnalyzePaperResponse)
-async def analyze_paper(request: AnalyzePaperRequest):
-    """
-    Analyze a research paper PDF
-    
-    Automation: This endpoint automates the complete analysis pipeline:
-    1. Extracts text from PDF
-    2. Identifies paper sections
-    3. Summarizes each section
-    4. Extracts keywords and topics
-    5. Generates research gaps and questions
-    6. Suggests related work
-    
-    This is the core automation function that processes papers automatically.
-    """
+async def analyze_paper(request: AnalyzePaperRequest, _=Depends(verify_internal_secret)):
     start_time = time.time()
-    
     try:
-        # Decode base64 PDF
-        pdf_bytes = base64.b64decode(request.fileContent)
+        try:
+            pdf_bytes = base64.b64decode(request.fileContent, validate=True)
+        except (binascii.Error, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid base64 PDF content")
+
+        if not pdf_bytes:
+            raise HTTPException(status_code=400, detail="Empty PDF content")
+        if len(pdf_bytes) > MAX_PDF_BYTES:
+            raise HTTPException(status_code=413, detail="PDF too large")
+        if not pdf_bytes.startswith(b"%PDF-"):
+            raise HTTPException(status_code=400, detail="Content is not a PDF")
+
         pdf_file = io.BytesIO(pdf_bytes)
-        
-        # Extract text from PDF
-        print(f"Extracting text from PDF: {request.fileName}")
+
         extracted_data = pdf_extractor.extract_text(pdf_file)
-        
-        if not extracted_data or not extracted_data.get('full_text'):
-            raise HTTPException(
-                status_code=400,
-                detail="Failed to extract text from PDF"
-            )
-        
-        full_text = extracted_data['full_text']
-        sections = extracted_data.get('sections', {})
-        metadata = extracted_data.get('metadata', {})
-        
-        # Process with NLP
-        print("Processing with NLP...")
+        if not extracted_data or not extracted_data.get("full_text"):
+            raise HTTPException(status_code=400, detail="Failed to extract text from PDF")
+
+        full_text = extracted_data["full_text"]
+        sections = extracted_data.get("sections", {})
+        metadata = extracted_data.get("metadata", {})
+
         nlp_results = nlp_processor.process_text(full_text)
-        
-        # AI Analysis (summarization, gaps, questions, etc.)
-        print("Running AI analysis...")
         ai_results = ai_analyzer.analyze_paper(
-            full_text=full_text,
-            sections=sections,
-            nlp_results=nlp_results
+            full_text=full_text, sections=sections, nlp_results=nlp_results
         )
-        
-        processing_time = time.time() - start_time
-        
-        # Combine results
-        response_data = {
-            "success": True,
-            "sections": ai_results.get("sections", {}),
-            "keywords": nlp_results.get("keywords", []),
-            "topics": nlp_results.get("topics", []),
-            "researchGaps": ai_results.get("research_gaps", []),
-            "researchQuestions": ai_results.get("research_questions", []),
-            "relatedWorkSuggestions": ai_results.get("related_work", []),
-            "metadata": metadata,
-            "processingTime": processing_time,
-            "aiModel": ai_analyzer.model_name # Track which model was used
-        }
-        
-        return AnalyzePaperResponse(**response_data)
-        
+
+        processing_time = round(time.time() - start_time, 2)
+
+        return AnalyzePaperResponse(
+            success=True,
+            sections=ai_results.get("sections", {}),
+            keywords=nlp_results.get("keywords", []),
+            topics=nlp_results.get("topics", []),
+            researchGaps=ai_results.get("research_gaps", []),
+            researchQuestions=ai_results.get("research_questions", []),
+            relatedWorkSuggestions=ai_results.get("related_work", []),
+            metadata=metadata,
+            processingTime=processing_time,
+            aiModel=ai_analyzer.model_name,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error analyzing paper: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing paper: {str(e)}"
-        )
+        print(f"Error analyzing paper: {e}")
+        raise HTTPException(status_code=500, detail="Error processing paper")
 
 
 @app.post("/ai/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """
-    Research chatbot endpoint
-    
-    Automation: Provides context-aware research assistance based on:
-    - User's uploaded papers
-    - Research domain
-    - Chat history
-    
-    This automates conversational AI for research queries.
-    """
+async def chat(request: ChatRequest, _=Depends(verify_internal_secret)):
     try:
-        message = request.message
-        context = request.context
-        
-        # Generate response using AI analyzer
-        response = ai_analyzer.chat(
-            message=message,
-            context=context
-        )
-        
-        return ChatResponse(
-            success=True,
-            response=response,
-            context=context
-        )
-        
+        response = ai_analyzer.chat(message=request.message, context=request.context)
+        return ChatResponse(success=True, response=response, context=request.context)
     except Exception as e:
-        print(f"Error in chat: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error generating chat response: {str(e)}"
-        )
+        print(f"Error in chat: {e}")
+        raise HTTPException(status_code=500, detail="Error generating chat response")
 
 
 @app.post("/ai/suggest-gaps")
-async def suggest_gaps(request: Dict[str, Any]):
-    """
-    Suggest research gaps for a topic
-    
-    Automation: Automatically identifies research gaps in a given domain
-    """
+async def suggest_gaps(request: Dict[str, Any], _=Depends(verify_internal_secret)):
+    topic = request.get("topic", "")
+    if not topic:
+        raise HTTPException(status_code=400, detail="Topic is required")
     try:
-        topic = request.get("topic", "")
-        domain = request.get("domain", "")
-        
-        if not topic:
-            raise HTTPException(status_code=400, detail="Topic is required")
-        
-        gaps = ai_analyzer.suggest_gaps(topic=topic, domain=domain)
-        
-        return {
-            "success": True,
-            "gaps": gaps
-        }
-        
+        gaps = ai_analyzer.suggest_gaps(topic=topic, domain=request.get("domain", ""))
+        return {"success": True, "gaps": gaps}
     except Exception as e:
-        print(f"Error suggesting gaps: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error suggesting gaps: {str(e)}"
-        )
+        print(f"Error suggesting gaps: {e}")
+        raise HTTPException(status_code=500, detail="Error suggesting gaps")
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=PORT)

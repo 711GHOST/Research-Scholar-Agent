@@ -1,19 +1,14 @@
 /**
  * Database Configuration
- * Establishes MongoDB connection using Mongoose
- * Handles connection events and errors
+ * Establishes MongoDB connection using Mongoose.
+ * Never logs the connection string (it contains credentials).
  */
 
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    console.log("Mongo URI:", process.env.MONGODB_URI);
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error(`❌ MongoDB Connection Error: ${error.message}`);

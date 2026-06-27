@@ -10,7 +10,9 @@
 const ChatHistory = require('../models/ChatHistory');
 const Paper = require('../models/Paper');
 const User = require('../models/User');
-const axios = require('axios');
+const aiClient = require('../services/aiClient');
+
+const MAX_MESSAGE_LENGTH = 4000;
 
 // Simple UUID generator (alternative to uuid package)
 const generateUUID = () => {
@@ -31,13 +33,19 @@ const generateUUID = () => {
  */
 const sendMessage = async (req, res, next) => {
   try {
-    const { message, sessionId } = req.body;
+    let { message, sessionId } = req.body;
 
-    if (!message) {
+    if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Message is required',
       });
+    }
+
+    message = message.trim().slice(0, MAX_MESSAGE_LENGTH);
+
+    if (sessionId !== undefined && typeof sessionId !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid session id' });
     }
 
     // Get or create chat session
@@ -104,34 +112,25 @@ const sendMessage = async (req, res, next) => {
     });
 
     try {
-      // Call AI service for chat response
-      // This integrates with the Python AI service for conversational AI
-      const aiResponse = await axios.post(
-        `${process.env.AI_SERVICE_URL}/ai/chat`,
-        {
-          message: message,
-          context: {
-            userId: req.user.id.toString(),
-            researchDomain: req.user.profile?.researchDomain || '',
-            papers: paperDetails.map((p) => ({
-              id: p.id,
-              title: p.title,
-              authors: p.authors,
-              keywords: p.summary?.keywords || p.metadata?.keywords || [],
-              summaryText: p.summaryText,
-            })),
-            chatHistory: chatSession.messages.slice(-10), // Last 10 messages for context
-          },
+      // Call the AI service (authenticated internal client) for a response
+      const aiData = await aiClient.chat({
+        message: message,
+        context: {
+          userId: req.user.id.toString(),
+          researchDomain: req.user.profile?.researchDomain || '',
+          papers: paperDetails.map((p) => ({
+            id: p.id,
+            title: p.title,
+            authors: p.authors,
+            keywords: p.summary?.keywords || p.metadata?.keywords || [],
+            summaryText: p.summaryText,
+          })),
+          chatHistory: chatSession.messages.slice(-10), // Last 10 messages for context
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 60000, // 1 minute timeout
-        }
-      );
+      });
 
-      const assistantMessage = aiResponse.data.response || 'I apologize, but I could not generate a response.';
+      const assistantMessage =
+        aiData.response || 'I apologize, but I could not generate a response.';
 
       // Add assistant response to session
       chatSession.messages.push({
@@ -141,10 +140,10 @@ const sendMessage = async (req, res, next) => {
       });
 
       // Update context if provided by AI
-      if (aiResponse.data.context) {
+      if (aiData.context) {
         chatSession.context = {
           ...chatSession.context,
-          ...aiResponse.data.context,
+          ...aiData.context,
         };
       }
 

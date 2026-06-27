@@ -1,13 +1,12 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // Use relative /api so the Vite dev proxy (and nginx in prod) handle routing.
+  baseURL: import.meta.env.VITE_API_URL || '/api',
+  headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor to add token
+// Attach the auth token to every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
@@ -16,18 +15,19 @@ api.interceptors.request.use(
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// Response interceptor for error handling
+// On 401, clear the session and bounce to login (unless already there)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      const path = window.location.pathname
+      if (path !== '/login' && path !== '/register') {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

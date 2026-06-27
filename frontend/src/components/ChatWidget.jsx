@@ -1,58 +1,66 @@
 import React, { useState } from 'react'
-import Fab from '@mui/material/Fab'
+import { Fab, Zoom, Paper, Box, IconButton, Typography, useMediaQuery } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import ChatIcon from '@mui/icons-material/Chat'
 import CloseIcon from '@mui/icons-material/Close'
-import Dialog from '@mui/material/Dialog'
-import Paper from '@mui/material/Paper'
-import IconButton from '@mui/material/IconButton'
 import Chatbot from './Dashboard/Chatbot'
 
 const ChatWidget = () => {
-  const [open, setOpen] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('chatWidgetOpen')) || false
-    } catch (e) {
-      return false
-    }
-  })
-
-  const toggleOpen = (val) => {
-    setOpen(val)
-    try {
-      localStorage.setItem('chatWidgetOpen', JSON.stringify(val))
-    } catch (e) {}
-  }
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const [open, setOpen] = useState(false)
 
   return (
     <>
-      <div className="fixed right-6 bottom-6 z-50">
+      <Zoom in={!open}>
         <Fab
           color="primary"
-          aria-label="chat"
-          onClick={() => toggleOpen(true)}
-          className="shadow-lg"
+          aria-label="Open research assistant"
+          onClick={() => setOpen(true)}
+          sx={{ position: 'fixed', right: 24, bottom: 24, zIndex: 1300 }}
         >
           <ChatIcon />
         </Fab>
-      </div>
+      </Zoom>
 
-      <Dialog
-        open={open}
-        onClose={() => toggleOpen(false)}
-        PaperProps={{
-          style: { width: 380, height: 560, position: 'fixed', right: 24, bottom: 88, margin: 0, borderRadius: 12 },
-        }}
-      >
-        <Paper sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1 }} elevation={0}>
-          <div style={{ paddingLeft: 8, fontWeight: 600 }}>Research Assistant</div>
-          <IconButton size="small" onClick={() => toggleOpen(false)}>
-            <CloseIcon />
-          </IconButton>
+      <Zoom in={open} unmountOnExit>
+        <Paper
+          elevation={12}
+          sx={{
+            position: 'fixed',
+            zIndex: 1300,
+            right: isMobile ? 8 : 24,
+            bottom: isMobile ? 8 : 24,
+            left: isMobile ? 8 : 'auto',
+            width: isMobile ? 'auto' : 390,
+            height: isMobile ? '80vh' : 600,
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              bgcolor: 'primary.main',
+              color: 'primary.contrastText',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Typography sx={{ fontWeight: 700 }}>Research Assistant</Typography>
+            <IconButton size="small" onClick={() => setOpen(false)} sx={{ color: 'inherit' }}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+            <Chatbot height="100%" embedded onClose={() => setOpen(false)} />
+          </Box>
         </Paper>
-        <div style={{ padding: 8, height: '100%' }}>
-          <Chatbot onClose={() => toggleOpen(false)} />
-        </div>
-      </Dialog>
+      </Zoom>
     </>
   )
 }

@@ -4,41 +4,46 @@ import {
   Typography,
   Box,
   TextField,
+  IconButton,
+  Avatar,
+  Stack,
   Button,
-  List,
-  ListItem,
-  ListItemText,
-  CircularProgress,
-  Alert,
+  Chip,
 } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
+import PersonIcon from '@mui/icons-material/Person'
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import api from '../../services/api'
+import { useToast } from '../../context/ToastContext'
 
-const Chatbot = ({ onClose } = {}) => {
+const SUGGESTIONS = [
+  'Summarize my most recent paper',
+  'What research gaps appear across my library?',
+  'Suggest follow-up research questions',
+]
+
+const Chatbot = ({ onClose, height = '72vh', embedded = false } = {}) => {
+  const toast = useToast()
   const [messages, setMessages] = useState([])
-  const [inputMessage, setInputMessage] = useState('')
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [sessionId, setSessionId] = useState(null)
-  const messagesEndRef = useRef(null)
-  const [typing, setTyping] = useState(false)
+  const endRef = useRef(null)
 
   useEffect(() => {
-    // Auto-scroll to bottom when messages change
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
 
-  // Load persisted session/messages
+  // Restore persisted session
   useEffect(() => {
     try {
       const storedSession = localStorage.getItem('chat_sessionId')
       const storedMessages = localStorage.getItem('chat_messages')
       if (storedSession) setSessionId(storedSession)
       if (storedMessages) setMessages(JSON.parse(storedMessages))
-
-      // If we have a sessionId, try to sync with server
       if (storedSession) {
-        (async () => {
+        ;(async () => {
           try {
             const res = await api.get(`/chat/sessions/${storedSession}`)
             if (res.data?.session?.messages) {
@@ -46,16 +51,15 @@ const Chatbot = ({ onClose } = {}) => {
               localStorage.setItem('chat_messages', JSON.stringify(res.data.session.messages))
             }
           } catch (e) {
-            // ignore
+            /* ignore */
           }
         })()
       }
     } catch (e) {
-      console.error('Failed to load chat from storage', e)
+      /* ignore */
     }
   }, [])
 
-  // Persist messages locally
   useEffect(() => {
     try {
       localStorage.setItem('chat_messages', JSON.stringify(messages))
@@ -63,190 +67,188 @@ const Chatbot = ({ onClose } = {}) => {
     } catch (e) {}
   }, [messages, sessionId])
 
-  const handleSend = async () => {
-    if (!inputMessage.trim()) return
-
-    const isDeleteCommand = (text) => {
-      if (!text) return false
-      const t = text.toLowerCase()
-      // match phrases like: delete chat, clear conversation, reset session, exit chat
-      return /\b(delete|clear|reset|erase|exit|close)\b.*\b(chat|conversation|session)\b/.test(t) || /\b(clear|reset|delete|erase)\b/.test(t) && /\b(chat|conversation|session)\b/.test(t)
-    }
-
-    if (isDeleteCommand(inputMessage)) {
-      // Add user message
-      const userMessage = {
-        role: 'user',
-        content: inputMessage,
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, userMessage])
-      setInputMessage('')
-
-      // Delete remote session if exists, then clear local state
-      try {
-        if (sessionId) {
-          await api.delete(`/chat/sessions/${sessionId}`)
-        }
-      } catch (e) {
-        // ignore errors
-      }
-
-      // Clear local storage and reset chat
-      try {
-        localStorage.removeItem('chat_messages')
-        localStorage.removeItem('chat_sessionId')
-      } catch (e) {}
-
-      setSessionId(null)
-      setMessages([
-        {
-          role: 'assistant',
-          content: 'Chat cleared. Start a new conversation when ready.',
-          timestamp: new Date(),
-        },
-      ])
-
-      // Optionally close widget
-      if (typeof onClose === 'function') onClose()
-
-      return
-    }
-
-    const userMessage = {
-      role: 'user',
-      content: inputMessage,
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInputMessage('')
-    setLoading(true)
-    setError('')
-
+  const clearChat = async () => {
     try {
-      setTyping(true)
-      const response = await api.post('/chat', {
-        message: inputMessage,
-        sessionId: sessionId,
-      })
-
-      // backend returns sessionId and messages array
-      if (response.data.sessionId) {
-        setSessionId(response.data.sessionId)
-        localStorage.setItem('chat_sessionId', response.data.sessionId)
-      }
-
-      if (response.data.messages) {
-        setMessages(response.data.messages)
-      } else if (response.data.message) {
-        const assistantMessage = {
-          role: 'assistant',
-          content: response.data.message,
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, assistantMessage])
-      }
-    } catch (error) {
-      setError(error.response?.data?.message || 'Failed to send message')
-      console.error('Chat error:', error)
-    } finally {
-      setLoading(false)
-      setTyping(false)
-    }
+      if (sessionId) await api.delete(`/chat/sessions/${sessionId}`)
+    } catch (e) {}
+    localStorage.removeItem('chat_messages')
+    localStorage.removeItem('chat_sessionId')
+    setSessionId(null)
+    setMessages([])
+    toast.info('Conversation cleared')
   }
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  const send = async (text) => {
+    const content = (text ?? input).trim()
+    if (!content || loading) return
+    setMessages((prev) => [...prev, { role: 'user', content, timestamp: new Date() }])
+    setInput('')
+    setLoading(true)
+    try {
+      const res = await api.post('/chat', { message: content, sessionId })
+      if (res.data.sessionId) setSessionId(res.data.sessionId)
+      if (res.data.messages) setMessages(res.data.messages)
+      else if (res.data.message)
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: res.data.message, timestamp: new Date() },
+        ])
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Failed to reach the assistant'
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: msg, timestamp: new Date() },
+      ])
+      toast.error(msg)
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <Paper sx={{ p: 4, height: '70vh', display: 'flex', flexDirection: 'column' }}>
-      <Typography variant="h5" gutterBottom>
-        Research Chatbot
-      </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        Ask questions about your research papers, get summaries, and discover research gaps
-      </Typography>
+    <Paper
+      variant={embedded ? 'elevation' : 'outlined'}
+      elevation={0}
+      sx={{ height, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+    >
+      <Box
+        sx={{
+          px: 2.5,
+          py: 1.5,
+          borderBottom: (t) => `1px solid ${t.palette.divider}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+        }}
+      >
+        <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
+          <SmartToyIcon fontSize="small" />
+        </Avatar>
+        <Box sx={{ flexGrow: 1 }}>
+          <Typography sx={{ fontWeight: 700, lineHeight: 1.1 }}>Research Assistant</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Context-aware over your library
+          </Typography>
+        </Box>
+        <IconButton size="small" onClick={clearChat} title="Clear conversation">
+          <DeleteSweepIcon fontSize="small" />
+        </IconButton>
+      </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: 'background.default' }}>
+        {messages.length === 0 ? (
+          <Box sx={{ textAlign: 'center', mt: 4, color: 'text.secondary' }}>
+            <SmartToyIcon sx={{ fontSize: 40, opacity: 0.5 }} />
+            <Typography sx={{ mt: 1, fontWeight: 600 }}>
+              Ask about your research
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 2, alignItems: 'center' }}>
+              {SUGGESTIONS.map((s) => (
+                <Chip key={s} label={s} onClick={() => send(s)} variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+        ) : (
+          messages.map((m, i) => {
+            const isUser = m.role === 'user'
+            return (
+              <Stack
+                key={i}
+                direction="row"
+                spacing={1}
+                sx={{
+                  mb: 1.5,
+                  justifyContent: isUser ? 'flex-end' : 'flex-start',
+                  alignItems: 'flex-end',
+                }}
+              >
+                {!isUser && (
+                  <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28 }}>
+                    <SmartToyIcon sx={{ fontSize: 16 }} />
+                  </Avatar>
+                )}
+                <Box
+                  sx={{
+                    maxWidth: '78%',
+                    px: 1.75,
+                    py: 1.25,
+                    borderRadius: 2,
+                    bgcolor: isUser ? 'primary.main' : 'background.paper',
+                    color: isUser ? 'primary.contrastText' : 'text.primary',
+                    border: (t) => (isUser ? 'none' : `1px solid ${t.palette.divider}`),
+                    boxShadow: isUser ? 2 : 0,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                    {m.content}
+                  </Typography>
+                </Box>
+                {isUser && (
+                  <Avatar sx={{ bgcolor: 'secondary.main', width: 28, height: 28 }}>
+                    <PersonIcon sx={{ fontSize: 16 }} />
+                  </Avatar>
+                )}
+              </Stack>
+            )
+          })
+        )}
+
+        {loading && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-end' }}>
+            <Avatar sx={{ bgcolor: 'primary.main', width: 28, height: 28 }}>
+              <SmartToyIcon sx={{ fontSize: 16 }} />
+            </Avatar>
+            <Box
+              className="rsa-typing"
+              sx={{
+                px: 2,
+                py: 1.5,
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                border: (t) => `1px solid ${t.palette.divider}`,
+                color: 'text.secondary',
+              }}
+            >
+              <span />
+              <span />
+              <span />
+            </Box>
+          </Stack>
+        )}
+        <div ref={endRef} />
+      </Box>
 
       <Box
         sx={{
-          flex: 1,
-          overflow: 'auto',
-          border: '1px solid #e0e0e0',
-          borderRadius: 1,
-          p: 2,
-          mb: 2,
-          backgroundColor: '#fafafa',
+          p: 1.5,
+          borderTop: (t) => `1px solid ${t.palette.divider}`,
+          display: 'flex',
+          gap: 1,
         }}
       >
-        {messages.length === 0 ? (
-          <Box sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
-            <Typography>Start a conversation with your research assistant</Typography>
-            <Typography variant="body2" sx={{ mt: 2 }}>
-              Try asking: "Summarize my last paper" or "Suggest research gaps in my topic"
-            </Typography>
-          </Box>
-        ) : (
-          <List>
-            {messages.map((message, index) => (
-              <ListItem
-                key={index}
-                sx={{
-                  justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <ListItemText
-                  primary={message.content}
-                  secondary={new Date(message.timestamp).toLocaleTimeString()}
-                  sx={{
-                    backgroundColor: message.role === 'user' ? '#1976d2' : '#e0e0e0',
-                    color: message.role === 'user' ? 'white' : 'black',
-                    padding: 1.5,
-                    borderRadius: 2,
-                    maxWidth: '70%',
-                    '& .MuiListItemText-primary': {
-                      color: message.role === 'user' ? 'white' : 'inherit',
-                    },
-                    '& .MuiListItemText-secondary': {
-                      color: message.role === 'user' ? 'rgba(255,255,255,0.7)' : 'text.secondary',
-                    },
-                  }}
-                />
-              </ListItem>
-            ))}
-            <div ref={messagesEndRef} />
-          </List>
-        )}
-      </Box>
-
-      <Box sx={{ display: 'flex', gap: 1 }}>
         <TextField
           fullWidth
-          placeholder="Type your message..."
-          value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={loading}
+          size="small"
+          placeholder="Type your message…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              send()
+            }
+          }}
+          multiline
+          maxRows={4}
         />
-        <Button
-          variant="contained"
-          onClick={handleSend}
-          disabled={loading || !inputMessage.trim()}
-          startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+        <IconButton
+          color="primary"
+          onClick={() => send()}
+          disabled={loading || !input.trim()}
+          sx={{ alignSelf: 'flex-end', bgcolor: 'primary.main', color: 'primary.contrastText', '&:hover': { bgcolor: 'primary.dark' }, '&.Mui-disabled': { bgcolor: 'action.disabledBackground' } }}
         >
-          Send
-        </Button>
+          <SendIcon />
+        </IconButton>
       </Box>
     </Paper>
   )

@@ -1,591 +1,344 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Paper,
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
   Typography,
   Button,
-  Box,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   IconButton,
+  Chip,
+  TextField,
+  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   CircularProgress,
-  Alert,
-  Chip,
-  Switch,
-  FormControlLabel,
+  Tooltip,
+  Stack,
+  Paper,
 } from '@mui/material'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DeleteIcon from '@mui/icons-material/Delete'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import SearchIcon from '@mui/icons-material/Search'
+import TravelExploreIcon from '@mui/icons-material/TravelExplore'
+import ArticleIcon from '@mui/icons-material/Article'
 import api from '../../services/api'
+import { useToast } from '../../context/ToastContext'
+import PaperDetailDialog from '../PaperDetailDialog'
 
-const Papers = () => {
+const statusColor = (s) =>
+  s === 'analyzed' ? 'success' : s === 'processing' ? 'warning' : s === 'failed' ? 'error' : 'default'
+
+const Papers = ({ onDiscover }) => {
+  const toast = useToast()
   const [papers, setPapers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [searchTitle, setSearchTitle] = useState('')
-  const [searchAuthor, setSearchAuthor] = useState('')
-  const [searchIsbn, setSearchIsbn] = useState('')
-  const [lastNYears, setLastNYears] = useState('')
-  const [useExternal, setUseExternal] = useState(false)
-  const [page, setPage] = useState(0)
-  const [limit, setLimit] = useState(10)
-  const [totalResults, setTotalResults] = useState(0)
-  const [sort, setSort] = useState('relevance')
-  const [venueFilter, setVenueFilter] = useState('')
-  const [openAccessOnly, setOpenAccessOnly] = useState(false)
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [uploadOpen, setUploadOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [uploading, setUploading] = useState(false)
-  const [viewDialogOpen, setViewDialogOpen] = useState(false)
-  const [selectedPaper, setSelectedPaper] = useState(null)
-  const [selectedExternal, setSelectedExternal] = useState({})
-  const [importing, setImporting] = useState(false)
-  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 })
-  const [importTopic, setImportTopic] = useState('')
+  const [analyzingId, setAnalyzingId] = useState(null)
+  const [viewPaper, setViewPaper] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const pollRef = useRef(null)
+
+  const fetchPapers = useCallback(async () => {
+    try {
+      const res = await api.get('/papers')
+      setPapers(res.data.papers || [])
+    } catch (e) {
+      toast.error('Failed to load your library')
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
 
   useEffect(() => {
     fetchPapers()
-  }, [])
+  }, [fetchPapers])
 
-  const fetchPapers = async () => {
-    try {
-      setLoading(true)
-      const response = await api.get('/papers')
-      setPapers(response.data.papers || [])
-    } catch (error) {
-      setError('Failed to fetch papers')
-      console.error('Error fetching papers:', error)
-    } finally {
-      setLoading(false)
+  // Poll while any paper is still processing so the UI updates automatically.
+  useEffect(() => {
+    const processing = papers.some((p) => p.status === 'processing')
+    if (processing && !pollRef.current) {
+      pollRef.current = setInterval(fetchPapers, 4000)
+    } else if (!processing && pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
     }
-  }
-
-  const handleSearch = async () => {
-    try {
-      setLoading(true)
-      setError('')
-      const params = {}
-      if (searchTitle) params.title = searchTitle
-      if (searchAuthor) params.author = searchAuthor
-      if (searchIsbn) params.isbn = searchIsbn
-      if (lastNYears) params.lastNYears = lastNYears
-      params.limit = limit
-      params.offset = page * limit
-      if (sort && sort !== 'relevance') params.sort = sort
-      if (venueFilter) params.venue = venueFilter
-      if (openAccessOnly) params.openAccess = true
-
-      if (useExternal) {
-        const response = await api.get('/external/search', { params })
-        setPapers(response.data.results || [])
-        setTotalResults(response.data.total || response.data.count || 0)
-      } else {
-        const response = await api.get('/papers/search', { params })
-        setPapers(response.data.papers || [])
-        setTotalResults(response.data.count || 0)
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
       }
-    } catch (err) {
-      setError('Search failed')
-    } finally {
-      setLoading(false)
     }
-  }
-
-  const handleClearSearch = () => {
-    setSearchTitle('')
-    setSearchAuthor('')
-    setSearchIsbn('')
-    setLastNYears('')
-    fetchPapers()
-  }
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (file && file.type === 'application/pdf') {
-      setSelectedFile(file)
-    } else {
-      setError('Please select a PDF file')
-    }
-  }
+  }, [papers, fetchPapers])
 
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setError('Please select a file')
-      return
-    }
-
+    if (!selectedFile) return
     const formData = new FormData()
     formData.append('file', selectedFile)
-    formData.append('title', selectedFile.name.replace('.pdf', ''))
-
+    formData.append('title', selectedFile.name.replace(/\.pdf$/i, ''))
     try {
       setUploading(true)
-      setError('')
       await api.post('/papers/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setUploadDialogOpen(false)
+      toast.success('Paper uploaded')
+      setUploadOpen(false)
       setSelectedFile(null)
       fetchPapers()
-    } catch (error) {
-      setError(error.response?.data?.message || 'Upload failed')
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Upload failed')
     } finally {
       setUploading(false)
     }
   }
 
-  const handleDelete = async (paperId) => {
-    if (!window.confirm('Are you sure you want to delete this paper?')) {
-      return
-    }
-
+  const handleAnalyze = async (id) => {
     try {
-      await api.delete(`/papers/${paperId}`)
+      setAnalyzingId(id)
+      // optimistic status
+      setPapers((prev) => prev.map((p) => (p._id === id ? { ...p, status: 'processing' } : p)))
+      await api.post(`/papers/${id}/analyze`)
+      toast.success('Analysis complete')
       fetchPapers()
-    } catch (error) {
-      setError('Failed to delete paper')
-    }
-  }
-
-  const handleAnalyze = async (paperId) => {
-    try {
-      setError('')
-      await api.post(`/papers/${paperId}/analyze`)
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Analysis failed')
       fetchPapers()
-      alert('Analysis started! This may take a few minutes.')
-    } catch (error) {
-      setError(error.response?.data?.message || 'Analysis failed')
+    } finally {
+      setAnalyzingId(null)
     }
   }
 
-  const handleView = async (paperId) => {
+  const handleView = async (id) => {
     try {
-      const response = await api.get(`/papers/${paperId}`)
-      setSelectedPaper(response.data.paper)
-      setViewDialogOpen(true)
-    } catch (error) {
-      setError('Failed to fetch paper details')
+      const res = await api.get(`/papers/${id}`)
+      setViewPaper(res.data.paper)
+    } catch (e) {
+      toast.error('Failed to load paper details')
     }
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'analyzed':
-        return 'success'
-      case 'processing':
-        return 'warning'
-      case 'failed':
-        return 'error'
-      default:
-        return 'default'
+  const handleDelete = async () => {
+    const id = confirmDelete?._id
+    setConfirmDelete(null)
+    if (!id) return
+    try {
+      await api.delete(`/papers/${id}`)
+      toast.info('Paper deleted')
+      setPapers((prev) => prev.filter((p) => p._id !== id))
+    } catch (e) {
+      toast.error('Failed to delete paper')
     }
   }
+
+  const filtered = papers.filter((p) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      (p.authors || []).join(' ').toLowerCase().includes(q)
+    )
+  })
 
   return (
-    <Paper sx={{ p: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, gap: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="h5">Research Papers</Typography>
-
-          <TextField
-            size="small"
-            placeholder="Title"
-            value={searchTitle}
-            onChange={(e) => setSearchTitle(e.target.value)}
-          />
-          <TextField
-            size="small"
-            placeholder="Author"
-            value={searchAuthor}
-            onChange={(e) => setSearchAuthor(e.target.value)}
-          />
-          <TextField
-            size="small"
-            placeholder="ISBN/DOI"
-            value={searchIsbn}
-            onChange={(e) => setSearchIsbn(e.target.value)}
-          />
-          <TextField
-            size="small"
-            select
-            label="Last"
-            value={lastNYears}
-            onChange={(e) => setLastNYears(e.target.value)}
-            SelectProps={{ native: true }}
-            sx={{ width: 120 }}
-          >
-            <option value="">--</option>
-            <option value="5">5 years</option>
-            <option value="10">10 years</option>
-          </TextField>
-
-          <TextField
-            size="small"
-            placeholder="Venue"
-            value={venueFilter}
-            onChange={(e) => setVenueFilter(e.target.value)}
-          />
-
-          <TextField
-            size="small"
-            select
-            label="Sort"
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            SelectProps={{ native: true }}
-            sx={{ width: 140 }}
-          >
-            <option value="relevance">Relevance</option>
-            <option value="year_desc">Year (newest)</option>
-            <option value="year_asc">Year (oldest)</option>
-          </TextField>
-
-          <FormControlLabel
-            control={<Switch checked={openAccessOnly} onChange={(e) => setOpenAccessOnly(e.target.checked)} />}
-            label="Open access"
-          />
-
-          <FormControlLabel
-            control={<Switch checked={useExternal} onChange={(e) => setUseExternal(e.target.checked)} />}
-            label="Search Online"
-          />
-
-          <Button variant="outlined" onClick={handleSearch}>Search</Button>
-          <Button variant="text" onClick={handleClearSearch}>Clear</Button>
+    <Box>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        sx={{ mb: 3, alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+      >
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+            My Library
+          </Typography>
+          <Typography color="text.secondary">
+            {papers.length} {papers.length === 1 ? 'paper' : 'papers'} ·{' '}
+            {papers.filter((p) => p.status === 'analyzed').length} analyzed
+          </Typography>
         </Box>
+        <Stack direction="row" spacing={1.5}>
+          <Button variant="outlined" startIcon={<TravelExploreIcon />} onClick={onDiscover}>
+            Discover
+          </Button>
+          <Button variant="contained" startIcon={<UploadFileIcon />} onClick={() => setUploadOpen(true)}>
+            Upload
+          </Button>
+        </Stack>
+      </Stack>
 
-        <Button
-          variant="contained"
-          startIcon={<UploadFileIcon />}
-          onClick={() => setUploadDialogOpen(true)}
-        >
-          Upload Paper
-        </Button>
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      )}
+      <TextField
+        fullWidth
+        placeholder="Search your library by title or author…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 3, maxWidth: 480 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
-      ) : useExternal ? (
-        <Box>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
-            <TextField size="small" placeholder="Topic (optional)" value={importTopic} onChange={(e) => setImportTopic(e.target.value)} sx={{ minWidth: 220 }} />
-            <Button variant="contained" onClick={async () => {
-              // import selected items
-              const selectedKeys = Object.keys(selectedExternal).filter(k => selectedExternal[k])
-              if (selectedKeys.length === 0) {
-                alert('No items selected for import')
-                return
-              }
-              try {
-                setImporting(true)
-                setImportProgress({ done: 0, total: selectedKeys.length })
-                for (let i = 0; i < selectedKeys.length; i++) {
-                  const key = selectedKeys[i]
-                  const item = papers.find(p => (p.paperId || p.paper_id || p.id) === key || p.paperId === key)
-                  if (!item) continue
-                  const payload = {
-                    title: item.title,
-                    authors: item.authors,
-                    url: item.url,
-                    doi: item.doi || item.paperId,
-                    year: item.year,
-                    venue: item.venue,
-                    topic: importTopic || '',
-                  }
-                  try {
-                    await api.post('/external/import', payload)
-                  } catch (e) {
-                    console.error('Import failed for', item.title, e)
-                  }
-                  setImportProgress((p) => ({ ...p, done: p.done + 1 }))
-                }
-                // refresh uploaded papers list
-                fetchPapers()
-                setSelectedExternal({})
-                setImportTopic('')
-                alert('Import requests submitted')
-              } finally {
-                setImporting(false)
-                setImportProgress({ done: 0, total: 0 })
-              }
-            }} disabled={importing}>
-              {importing ? `Importing (${importProgress.done}/${importProgress.total})` : 'Import Selected'}
-            </Button>
-            <Button variant="text" onClick={() => {
-              // select all toggle
-              if (papers.every(p => selectedExternal[p.paperId])) {
-                setSelectedExternal({})
-              } else {
-                const m = {}
-                papers.forEach(p => { if (p.paperId) m[p.paperId] = true })
-                setSelectedExternal(m)
-              }
-            }}>Toggle Select All</Button>
-          </Box>
-          {papers.length === 0 ? (
-            <Box sx={{ p: 4, textAlign: 'center' }}>No results found</Box>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {papers.map((p, i) => (
-                <Paper key={p.paperId || i} sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!selectedExternal[p.paperId]}
-                        onChange={(e) => setSelectedExternal((m) => ({ ...m, [p.paperId]: e.target.checked }))}
-                        style={{ width: 18, height: 18, marginTop: 6 }}
-                      />
-                      <Box>
-                        <Typography variant="h6">{p.title}</Typography>
-                        <Typography variant="body2" color="text.secondary">{(p.authors || []).join(', ')} — {p.year || ''} {p.venue ? `· ${p.venue}` : ''}</Typography>
-                        {p.abstract && <Typography variant="body2" sx={{ mt: 1 }}>{p.abstract.slice(0, 400)}{p.abstract.length > 400 ? '…' : ''}</Typography>}
-                        {p.url && (
-                          <Typography variant="body2" sx={{ mt: 1 }}>
-                            <a href={p.url} target="_blank" rel="noreferrer">Open in Semantic Scholar</a>
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                  </Box>
-                </Paper>
-              ))}
-            </Box>
+      ) : filtered.length === 0 ? (
+        <Paper variant="outlined" sx={{ p: 6, textAlign: 'center', borderStyle: 'dashed' }}>
+          <ArticleIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
+          <Typography variant="h6" sx={{ mt: 1 }}>
+            {papers.length === 0 ? 'Your library is empty' : 'No matches'}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            {papers.length === 0
+              ? 'Upload a PDF or discover open-access papers to get started.'
+              : 'Try a different search term.'}
+          </Typography>
+          {papers.length === 0 && (
+            <Stack direction="row" spacing={1.5} justifyContent="center">
+              <Button variant="contained" startIcon={<UploadFileIcon />} onClick={() => setUploadOpen(true)}>
+                Upload a paper
+              </Button>
+              <Button variant="outlined" startIcon={<TravelExploreIcon />} onClick={onDiscover}>
+                Discover papers
+              </Button>
+            </Stack>
           )}
-
-          {/* Pagination controls for external search */}
-          {useExternal && totalResults > limit && (
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-              <Typography variant="body2">Showing {page * limit + 1} - {Math.min((page + 1) * limit, totalResults)} of {totalResults}</Typography>
-              <Box>
-                <Button disabled={page === 0} onClick={() => { setPage((p) => Math.max(0, p - 1)); handleSearch() }} sx={{ mr: 1 }}>Previous</Button>
-                <Button disabled={(page + 1) * limit >= totalResults} onClick={() => { setPage((p) => p + 1); handleSearch() }}>Next</Button>
-              </Box>
-            </Box>
-          )}
-        </Box>
+        </Paper>
       ) : (
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Title</TableCell>
-                <TableCell>Authors</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Upload Date</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {papers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    No papers uploaded yet
-                  </TableCell>
-                </TableRow>
-              ) : (
-                papers.map((paper) => (
-                  <TableRow key={paper._id}>
-                    <TableCell>{paper.title}</TableCell>
-                    <TableCell>
-                      {paper.authors && paper.authors.length > 0
-                        ? paper.authors.join(', ')
-                        : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={paper.status}
-                        color={getStatusColor(paper.status)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{new Date(paper.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleView(paper._id)}
-                        title="View Details"
-                      >
-                        <VisibilityIcon />
-                      </IconButton>
-                      {paper.status !== 'processing' && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleAnalyze(paper._id)}
-                          title="Analyze Paper"
-                        >
-                          <PlayArrowIcon />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(paper._id)}
-                        color="error"
-                        title="Delete Paper"
-                      >
+        <Grid container spacing={2.5}>
+          {filtered.map((paper) => (
+            <Grid item xs={12} sm={6} lg={4} key={paper._id}>
+              <Card
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 },
+                }}
+              >
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                    <Chip size="small" label={paper.status} color={statusColor(paper.status)} />
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(paper.createdAt).toLocaleDateString()}
+                    </Typography>
+                  </Stack>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: 700, mt: 1.5, lineHeight: 1.3 }}
+                  >
+                    {paper.title}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {paper.authors?.length ? paper.authors.join(', ') : 'Unknown authors'}
+                  </Typography>
+                  {paper.topic && (
+                    <Chip size="small" variant="outlined" label={paper.topic} sx={{ mt: 1.5 }} />
+                  )}
+                </CardContent>
+                <CardActions sx={{ px: 2, pb: 2, justifyContent: 'space-between' }}>
+                  <Button
+                    size="small"
+                    startIcon={<VisibilityIcon />}
+                    onClick={() => handleView(paper._id)}
+                  >
+                    Details
+                  </Button>
+                  <Box>
+                    {paper.status !== 'processing' && (
+                      <Tooltip title={paper.status === 'analyzed' ? 'Re-analyze' : 'Analyze'}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            disabled={analyzingId === paper._id}
+                            onClick={() => handleAnalyze(paper._id)}
+                          >
+                            {analyzingId === paper._id ? (
+                              <CircularProgress size={18} />
+                            ) : (
+                              <PlayArrowIcon />
+                            )}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    )}
+                    {paper.status === 'processing' && (
+                      <CircularProgress size={18} sx={{ mx: 1.2 }} />
+                    )}
+                    <Tooltip title="Delete">
+                      <IconButton size="small" color="error" onClick={() => setConfirmDelete(paper)}>
                         <DeleteIcon />
                       </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                    </Tooltip>
+                  </Box>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
       )}
 
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)}>
-        <DialogTitle>Upload Research Paper</DialogTitle>
+      {/* Upload dialog */}
+      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Upload a research paper</DialogTitle>
         <DialogContent>
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            style={{ marginTop: '16px' }}
-          />
+          <Button
+            component="label"
+            variant="outlined"
+            fullWidth
+            startIcon={<UploadFileIcon />}
+            sx={{ mt: 1, py: 2, borderStyle: 'dashed' }}
+          >
+            {selectedFile ? selectedFile.name : 'Choose a PDF file'}
+            <input
+              type="file"
+              accept="application/pdf"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files[0]
+                if (f && f.type === 'application/pdf') setSelectedFile(f)
+                else toast.error('Please select a PDF file')
+              }}
+            />
+          </Button>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleUpload} variant="contained" disabled={uploading || !selectedFile}>
-            {uploading ? <CircularProgress size={24} /> : 'Upload'}
+          <Button onClick={() => setUploadOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpload} disabled={uploading || !selectedFile}>
+            {uploading ? <CircularProgress size={22} /> : 'Upload'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* View Dialog */}
-      <Dialog
-        open={viewDialogOpen}
-        onClose={() => setViewDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{selectedPaper?.title}</DialogTitle>
+      {/* Delete confirmation */}
+      <Dialog open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete paper?</DialogTitle>
         <DialogContent>
-          {selectedPaper && (
-            <Box>
-              <Typography variant="body2" color="text.secondary">
-                Authors: {selectedPaper.authors?.join(', ') || 'N/A'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Status: <Chip label={selectedPaper.status} color={getStatusColor(selectedPaper.status)} size="small" />
-              </Typography>
-              {selectedPaper.summary && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="h6">Analysis</Typography>
-
-                  {/* Sections */}
-                  {selectedPaper.summary.sections && (
-                    <Box sx={{ mt: 1 }}>
-                      {Object.entries(selectedPaper.summary.sections).map(([key, val]) =>
-                        val ? (
-                          <Box key={key} sx={{ mb: 1 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
-                              {key}
-                            </Typography>
-                            <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
-                              {val}
-                            </Typography>
-                          </Box>
-                        ) : null
-                      )}
-                    </Box>
-                  )}
-
-                  {/* Keywords */}
-                  {selectedPaper.summary.keywords && selectedPaper.summary.keywords.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle1">Keywords</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                        {selectedPaper.summary.keywords.map((k, i) => (
-                          <Chip key={i} label={`${k.word} ${k.frequency ? `(${k.frequency})` : ''}`} size="small" />
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Topics */}
-                  {selectedPaper.summary.topics && selectedPaper.summary.topics.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle1">Topics</Typography>
-                      <Box sx={{ mt: 1 }}>
-                        {selectedPaper.summary.topics.map((t, i) => (
-                          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                            <Typography variant="body2">{t.topic}</Typography>
-                            <Chip label={`${Math.round((t.confidence || 0) * 100)}%`} size="small" />
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Research Gaps */}
-                  {selectedPaper.summary.researchGaps && selectedPaper.summary.researchGaps.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle1">Research Gaps</Typography>
-                      <Box sx={{ mt: 1 }}>
-                        {selectedPaper.summary.researchGaps.map((g, i) => (
-                          <Box key={i} sx={{ mb: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{g.gap}</Typography>
-                            {g.reasoning && <Typography variant="body2" sx={{ mt: 0.5 }}>{g.reasoning}</Typography>}
-                            {g.priority && <Chip label={g.priority} size="small" sx={{ mt: 0.5 }} />}
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Related Work */}
-                  {selectedPaper.summary.relatedWorkSuggestions && selectedPaper.summary.relatedWorkSuggestions.length > 0 && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle1">Related Work Suggestions</Typography>
-                      <Box sx={{ mt: 1 }}>
-                        {selectedPaper.summary.relatedWorkSuggestions.map((r, i) => (
-                          <Box key={i} sx={{ mb: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.title}</Typography>
-                            <Typography variant="body2" color="text.secondary">{(r.authors || []).join(', ')}</Typography>
-                            {r.reason && <Typography variant="body2" sx={{ mt: 0.5 }}>{r.reason}</Typography>}
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Processing meta */}
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="caption">Processed at: {new Date(selectedPaper.summary.processedAt).toLocaleString()}</Typography>
-                    <Typography variant="caption" sx={{ display: 'block' }}>Processing time: {selectedPaper.summary.processingTime || 0}s</Typography>
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          )}
+          <Typography>
+            “{confirmDelete?.title}” and its analysis will be permanently removed.
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setViewDialogOpen(false)}>Close</Button>
+          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
-    </Paper>
+
+      <PaperDetailDialog open={Boolean(viewPaper)} paper={viewPaper} onClose={() => setViewPaper(null)} />
+    </Box>
   )
 }
 

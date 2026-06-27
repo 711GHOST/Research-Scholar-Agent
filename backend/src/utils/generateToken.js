@@ -1,14 +1,15 @@
 /**
  * Generate JWT Token
- * Utility function to create JSON Web Tokens for authentication
- * Tokens include user ID and expiration time
+ * Utility function to create JSON Web Tokens for authentication.
+ * Tokens include user ID and expiration time.
  */
 
 const jwt = require('jsonwebtoken');
+const { config } = require('../config/env');
 
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '7d',
+  return jwt.sign({ id }, config.jwtSecret, {
+    expiresIn: config.jwtExpire,
   });
 };
 

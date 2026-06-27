@@ -1,41 +1,28 @@
 /**
  * Paper Controller
- * Handles research paper upload, retrieval, and management
- * Integrates with AI service for paper analysis
- * 
- * Automation Context: Automates the complete research paper
- * processing pipeline from upload to AI analysis
+ * Handles research paper upload, retrieval, and management.
+ * Integrates with the AI service for paper analysis.
  */
 
 const Paper = require('../models/Paper');
 const Summary = require('../models/Summary');
 const User = require('../models/User');
-const axios = require('axios');
 const fs = require('fs').promises;
-const path = require('path');
+const aiClient = require('../services/aiClient');
+const { escapeRegex, isPdfBuffer } = require('../utils/security');
 
 // Helper: perform analysis for a paper record (internal use)
 const performAnalysis = async (paper, userId) => {
-  // Update status to processing
   paper.status = 'processing';
   await paper.save();
 
   try {
     const fileBuffer = await fs.readFile(paper.filePath);
 
-    const aiResponse = await axios.post(
-      `${process.env.AI_SERVICE_URL}/ai/analyze-paper`,
-      {
-        fileName: paper.fileName,
-        fileContent: fileBuffer.toString('base64'),
-      },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 300000,
-      }
-    );
-
-    const analysisData = aiResponse.data;
+    const analysisData = await aiClient.analyzePaper({
+      fileName: paper.fileName,
+      fileContent: fileBuffer.toString('base64'),
+    });
 
     const summary = await Summary.findOneAndUpdate(
       { paperId: paper._id },
@@ -61,7 +48,6 @@ const performAnalysis = async (paper, userId) => {
     }
     await paper.save();
 
-    // Update usage stats safely
     try {
       await User.findByIdAndUpdate(userId, {
         $inc: { 'usageStats.totalAnalysisTime': analysisData.processingTime || 0 },
@@ -83,49 +69,52 @@ const performAnalysis = async (paper, userId) => {
  * @route   POST /api/papers/upload
  * @desc    Upload a research paper PDF
  * @access  Private
- * 
- * Automation: File upload triggers automatic metadata extraction
- * and queues paper for AI analysis
  */
 const uploadPaper = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please upload a PDF file',
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Please upload a PDF file' });
+    }
+
+    // Verify the file is actually a PDF by reading only its first bytes
+    // (mimetype alone is client-controlled and easily spoofed).
+    const handle = await fs.open(req.file.path, 'r');
+    const { buffer: head } = await handle.read(Buffer.alloc(5), 0, 5, 0);
+    await handle.close();
+    if (!isPdfBuffer(head)) {
+      await fs.unlink(req.file.path).catch(() => {});
+      return res
+        .status(400)
+        .json({ success: false, message: 'Uploaded file is not a valid PDF' });
     }
 
     const { title, authors } = req.body;
 
-    // Create paper record
     const paper = await Paper.create({
       userId: req.user.id,
-      title: title || req.file.originalname.replace('.pdf', ''),
-      authors: authors ? authors.split(',').map((a) => a.trim()) : [],
+      title: (title || req.file.originalname.replace(/\.pdf$/i, '')).slice(0, 300),
+      authors: authors
+        ? String(authors)
+            .split(',')
+            .map((a) => a.trim())
+            .filter(Boolean)
+        : [],
       fileName: req.file.originalname,
       filePath: req.file.path,
       fileSize: req.file.size,
       status: 'uploaded',
     });
 
-    // Update user statistics
     await User.findByIdAndUpdate(req.user.id, {
       $inc: { 'usageStats.papersAnalyzed': 1 },
     });
 
-    res.status(201).json({
-      success: true,
-      paper,
-    });
+    res.status(201).json({ success: true, paper });
   } catch (error) {
-    // Clean up uploaded file on error
     if (req.file) {
-      try {
-        await fs.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting file:', unlinkError);
-      }
+      await fs.unlink(req.file.path).catch(() => {});
     }
     next(error);
   }
@@ -142,11 +131,7 @@ const getPapers = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .populate('userId', 'name email');
 
-    res.json({
-      success: true,
-      count: papers.length,
-      papers,
-    });
+    res.json({ success: true, count: papers.length, papers });
   } catch (error) {
     next(error);
   }
@@ -154,7 +139,7 @@ const getPapers = async (req, res, next) => {
 
 /**
  * @route   GET /api/papers/:id
- * @desc    Get single paper by ID
+ * @desc    Get single paper by ID (with its summary)
  * @access  Private
  */
 const getPaper = async (req, res, next) => {
@@ -165,21 +150,14 @@ const getPaper = async (req, res, next) => {
     }).populate('userId', 'name email');
 
     if (!paper) {
-      return res.status(404).json({
-        success: false,
-        message: 'Paper not found',
-      });
+      return res.status(404).json({ success: false, message: 'Paper not found' });
     }
 
-    // Get associated summary if exists
     const summary = await Summary.findOne({ paperId: paper._id });
 
     res.json({
       success: true,
-      paper: {
-        ...paper.toObject(),
-        summary: summary || null,
-      },
+      paper: { ...paper.toObject(), summary: summary || null },
     });
   } catch (error) {
     next(error);
@@ -190,8 +168,6 @@ const getPaper = async (req, res, next) => {
  * @route   DELETE /api/papers/:id
  * @desc    Delete a paper and its associated data
  * @access  Private
- * 
- * Automation: Cascading delete removes paper, summary, and file
  */
 const deletePaper = async (req, res, next) => {
   try {
@@ -201,30 +177,20 @@ const deletePaper = async (req, res, next) => {
     });
 
     if (!paper) {
-      return res.status(404).json({
-        success: false,
-        message: 'Paper not found',
+      return res.status(404).json({ success: false, message: 'Paper not found' });
+    }
+
+    await Summary.deleteOne({ paperId: paper._id });
+
+    if (paper.filePath) {
+      await fs.unlink(paper.filePath).catch((fileError) => {
+        console.error('Error deleting file:', fileError.message);
       });
     }
 
-    // Delete associated summary
-    await Summary.deleteOne({ paperId: paper._id });
-
-    // Delete file from filesystem
-    try {
-      await fs.unlink(paper.filePath);
-    } catch (fileError) {
-      console.error('Error deleting file:', fileError);
-      // Continue with database deletion even if file deletion fails
-    }
-
-    // Delete paper record
     await Paper.deleteOne({ _id: paper._id });
 
-    res.json({
-      success: true,
-      message: 'Paper deleted successfully',
-    });
+    res.json({ success: true, message: 'Paper deleted successfully' });
   } catch (error) {
     next(error);
   }
@@ -234,14 +200,6 @@ const deletePaper = async (req, res, next) => {
  * @route   POST /api/papers/:id/analyze
  * @desc    Trigger AI analysis for a paper
  * @access  Private
- * 
- * Automation: This is the core automation endpoint that:
- * 1. Sends paper to AI service
- * 2. Processes response
- * 3. Stores results in database
- * 4. Updates paper status
- * 
- * AI Service Integration Point
  */
 const analyzePaper = async (req, res, next) => {
   try {
@@ -251,19 +209,17 @@ const analyzePaper = async (req, res, next) => {
     });
 
     if (!paper) {
-      return res.status(404).json({
-        success: false,
-        message: 'Paper not found',
-      });
+      return res.status(404).json({ success: false, message: 'Paper not found' });
     }
 
-    // Use internal helper to perform the analysis
     try {
       const summary = await performAnalysis(paper, req.user.id);
       res.json({ success: true, message: 'Paper analyzed successfully', summary });
     } catch (aiError) {
       console.error('AI Service Error:', aiError.message || aiError);
-      return res.status(500).json({ success: false, message: 'AI analysis failed' });
+      return res
+        .status(502)
+        .json({ success: false, message: 'AI analysis failed. Please try again.' });
     }
   } catch (error) {
     next(error);
@@ -272,7 +228,7 @@ const analyzePaper = async (req, res, next) => {
 
 /**
  * @route   GET /api/papers/search
- * @desc    Search papers by title, author, isbn/doi and year range
+ * @desc    Search the user's own papers by title, author, isbn/doi and year range
  * @access  Private
  */
 const searchPapers = async (req, res, next) => {
@@ -281,19 +237,14 @@ const searchPapers = async (req, res, next) => {
 
     const query = { userId: req.user.id };
 
-    if (title) {
-      query.title = { $regex: title, $options: 'i' };
-    }
-
-    if (author) {
-      query.authors = { $regex: author, $options: 'i' };
-    }
+    if (title) query.title = { $regex: escapeRegex(title), $options: 'i' };
+    if (author) query.authors = { $regex: escapeRegex(author), $options: 'i' };
 
     if (isbn) {
-      // search across metadata.doi or metadata.isbn if present
+      const safe = escapeRegex(isbn);
       query.$or = [
-        { 'metadata.doi': { $regex: isbn, $options: 'i' } },
-        { 'metadata.isbn': { $regex: isbn, $options: 'i' } },
+        { 'metadata.doi': { $regex: safe, $options: 'i' } },
+        { 'metadata.isbn': { $regex: safe, $options: 'i' } },
       ];
     }
 
@@ -306,18 +257,14 @@ const searchPapers = async (req, res, next) => {
       }
     } else if (fromYear || toYear) {
       const range = {};
-      if (fromYear) {
-        range.$gte = new Date(`${fromYear}-01-01`);
-      }
-      if (toYear) {
-        range.$lte = new Date(`${toYear}-12-31`);
-      }
-      if (Object.keys(range).length > 0) {
-        query['metadata.publicationDate'] = range;
-      }
+      if (fromYear) range.$gte = new Date(`${parseInt(fromYear, 10)}-01-01`);
+      if (toYear) range.$lte = new Date(`${parseInt(toYear, 10)}-12-31`);
+      if (Object.keys(range).length > 0) query['metadata.publicationDate'] = range;
     }
 
-    const papers = await Paper.find(query).sort({ createdAt: -1 }).populate('userId', 'name email');
+    const papers = await Paper.find(query)
+      .sort({ createdAt: -1 })
+      .populate('userId', 'name email');
 
     res.json({ success: true, count: papers.length, papers });
   } catch (error) {

@@ -1,20 +1,23 @@
 import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
-  Container,
+  Grid,
   Paper,
   TextField,
   Button,
   Typography,
-  Box,
   Alert,
   CircularProgress,
   MenuItem,
+  Link,
+  Stack,
+  Box,
 } from '@mui/material'
 import { useAuth } from '../context/AuthContext'
+import AuthHero from '../components/AuthHero'
 
 const Register = () => {
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
@@ -29,174 +32,95 @@ const Register = () => {
   const { register } = useAuth()
   const navigate = useNavigate()
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    })
-  }
+  const change = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters')
-      return
-    }
+    if (form.password !== form.confirmPassword) return setError('Passwords do not match')
+    if (form.password.length < 6) return setError('Password must be at least 6 characters')
 
     setLoading(true)
-
-    const userData = {
-      name: formData.name,
-      email: formData.email,
-      password: formData.password,
-      role: formData.role,
+    const result = await register({
+      name: form.name,
+      email: form.email,
+      password: form.password,
+      role: form.role,
       profile: {
-        institution: formData.institution,
-        department: formData.department,
-        researchDomain: formData.researchDomain,
+        institution: form.institution,
+        department: form.department,
+        researchDomain: form.researchDomain,
       },
-    }
-
-    const result = await register(userData)
-
-    if (result.success) {
-      navigate('/dashboard')
-    } else {
-      setError(result.message || 'Registration failed')
-    }
-
+    })
     setLoading(false)
+    if (result.success) navigate('/dashboard')
+    else setError(result.message || 'Registration failed')
   }
 
   return (
-    <Container maxWidth="sm">
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          py: 4,
-        }}
+    <Grid container sx={{ minHeight: '100vh' }}>
+      <AuthHero />
+      <Grid
+        item
+        xs={12}
+        md={5}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 3 }}
       >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            Research Scholar Agent
+        <Paper variant="outlined" sx={{ p: 4, width: '100%', maxWidth: 440, my: 3 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800 }}>
+            Create your account
           </Typography>
-          <Typography variant="h6" component="h2" gutterBottom align="center" color="text.secondary">
-            Sign Up
+          <Typography color="text.secondary" sx={{ mb: 3 }}>
+            Start analyzing research in minutes.
           </Typography>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
               {error}
             </Alert>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              margin="normal"
-              required
-            />
-            <TextField
-              fullWidth
-              label="Email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              margin="normal"
-              required
-            />
-            <TextField
-              fullWidth
-              label="Password"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              margin="normal"
-              required
-            />
-            <TextField
-              fullWidth
-              label="Confirm Password"
-              name="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              margin="normal"
-              required
-            />
-            <TextField
-              fullWidth
-              select
-              label="Role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              margin="normal"
-              required
-            >
-              <MenuItem value="Student">Student</MenuItem>
-              <MenuItem value="Research Scholar">Research Scholar</MenuItem>
-              <MenuItem value="Faculty">Faculty</MenuItem>
-            </TextField>
-            <TextField
-              fullWidth
-              label="Institution"
-              name="institution"
-              value={formData.institution}
-              onChange={handleChange}
-              margin="normal"
-            />
-            <TextField
-              fullWidth
-              label="Department"
-              name="department"
-              value={formData.department}
-              onChange={handleChange}
-              margin="normal"
-            />
-            <TextField
-              fullWidth
-              label="Research Domain"
-              name="researchDomain"
-              value={formData.researchDomain}
-              onChange={handleChange}
-              margin="normal"
-            />
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Sign Up'}
-            </Button>
-          </form>
-
-          <Box textAlign="center">
-            <Typography variant="body2">
-              Already have an account? <Link to="/login">Sign In</Link>
-            </Typography>
+          <Box component="form" onSubmit={handleSubmit}>
+            <Stack spacing={2}>
+              <TextField fullWidth label="Full name" name="name" value={form.name} onChange={change} required />
+              <TextField fullWidth label="Email" name="email" type="email" value={form.email} onChange={change} required />
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Password" name="password" type="password" value={form.password} onChange={change} required />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Confirm" name="confirmPassword" type="password" value={form.confirmPassword} onChange={change} required />
+                </Grid>
+              </Grid>
+              <TextField fullWidth select label="Role" name="role" value={form.role} onChange={change}>
+                <MenuItem value="Student">Student</MenuItem>
+                <MenuItem value="Research Scholar">Research Scholar</MenuItem>
+                <MenuItem value="Faculty">Faculty</MenuItem>
+              </TextField>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Institution" name="institution" value={form.institution} onChange={change} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField fullWidth label="Department" name="department" value={form.department} onChange={change} />
+                </Grid>
+              </Grid>
+              <TextField fullWidth label="Research domain" name="researchDomain" value={form.researchDomain} onChange={change} />
+              <Button type="submit" fullWidth size="large" variant="contained" disabled={loading}>
+                {loading ? <CircularProgress size={24} /> : 'Create account'}
+              </Button>
+            </Stack>
           </Box>
+
+          <Typography variant="body2" align="center" sx={{ mt: 3 }}>
+            Already have an account?{' '}
+            <Link component={RouterLink} to="/login" sx={{ fontWeight: 600 }}>
+              Sign in
+            </Link>
+          </Typography>
         </Paper>
-      </Box>
-    </Container>
+      </Grid>
+    </Grid>
   )
 }
 

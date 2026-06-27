@@ -204,8 +204,8 @@ cd Research_Scholar_Agent
 ```bash
 cd backend
 npm install
-cp env.example .env
-# Edit .env with your configuration
+cp .env.example .env
+# Edit .env: set a strong JWT_SECRET, your MONGODB_URI, and AI_SERVICE_SECRET
 npm run dev
 ```
 
@@ -213,7 +213,11 @@ npm run dev
 
 ```bash
 cd ai-service
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
+# Set AI_SERVICE_SECRET to match backend/.env. GEMINI_API_KEY is optional —
+# without it the service runs in deterministic "offline" mode.
 python app.py
 ```
 
@@ -329,6 +333,14 @@ research-scholar-agent/
 - `GET /api/chat/sessions` - Get chat sessions (protected)
 - `GET /api/chat/sessions/:sessionId` - Get chat session (protected)
 - `DELETE /api/chat/sessions/:sessionId` - Delete chat session (protected)
+
+### Discover / External (Semantic Scholar)
+
+- `GET /api/external/search` - Search papers; returns the direct open-access
+  `pdfUrl` and a `canImport` flag (protected, rate limited)
+- `POST /api/external/import` - Download an **open-access PDF** into your library
+  and auto-analyze it. Body: `{ title, authors, pdfUrl, doi, year, venue, topic }`
+  (protected, SSRF-protected, rate limited)
 
 ### AI Service (Internal)
 
@@ -453,7 +465,27 @@ docker-compose up -d
 Want me to create an optional GitHub Actions workflow to build the Docker images (and push to a registry) or a `render.yaml` to automate Render infra creation? Say “yes — create workflow” or “yes — create render.yaml” and I will add it.
 
 
+## 🔐 Security
+
+Security hardening (SSRF protection, rate limiting, NoSQL-injection sanitization,
+secure uploads, AI-service auth) and **required credential-rotation steps** are
+documented in [SECURITY.md](SECURITY.md). Read it before deploying.
+
 ## 🧪 Testing
+
+### Automated tests
+
+```bash
+# Backend — Jest + Supertest with an in-memory MongoDB (no external services)
+cd backend && npm test
+
+# AI service — pytest, runs fully offline (no Gemini key required)
+cd ai-service && pytest
+```
+
+The backend suite covers auth, RBAC isolation, upload/analyze, the SSRF guard,
+NoSQL-injection sanitization, and the external-import flow. The AI suite covers
+health, internal-secret enforcement, PDF validation, and structured-output shape.
 
 ### Manual Testing Checklist
 
