@@ -30,7 +30,7 @@ import TuneIcon from '@mui/icons-material/Tune'
 import api from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 10 // exactly 10 results per page
 
 const Discover = ({ onImported }) => {
   const toast = useToast()
@@ -44,7 +44,11 @@ const Discover = ({ onImported }) => {
 
   const [results, setResults] = useState([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [nextOffset, setNextOffset] = useState(0)
+  const [currentOffset, setCurrentOffset] = useState(0)
+  // Stack of source offsets for previous pages — enables exact Back navigation.
+  const [offsetStack, setOffsetStack] = useState([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
 
@@ -54,7 +58,12 @@ const Discover = ({ onImported }) => {
   const [bulkImporting, setBulkImporting] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
 
-  const runSearch = async (nextPage = 0) => {
+  // pageNumber is derived purely from how many offsets we've pushed.
+  const pageNumber = offsetStack.length + 1
+
+  // Fetch a page at a specific source offset; `stack` is the resulting
+  // previous-offset stack to store (so page number + Back stay consistent).
+  const doSearch = async (searchOffset, stack) => {
     if (!title.trim() && !author.trim() && !venue.trim()) {
       toast.warning('Enter a topic, author, or venue to search')
       return
@@ -62,7 +71,7 @@ const Discover = ({ onImported }) => {
     try {
       setLoading(true)
       setSearched(true)
-      const params = { limit: PAGE_SIZE, offset: nextPage * PAGE_SIZE }
+      const params = { limit: PAGE_SIZE, offset: searchOffset }
       if (title) params.title = title
       if (author) params.author = author
       if (venue) params.venue = venue
@@ -72,8 +81,11 @@ const Discover = ({ onImported }) => {
 
       const res = await api.get('/external/search', { params })
       setResults(res.data.results || [])
-      setTotal(res.data.total || res.data.count || 0)
-      setPage(nextPage)
+      setTotal(res.data.total || 0)
+      setNextOffset(res.data.nextOffset ?? searchOffset + PAGE_SIZE)
+      setHasMore(Boolean(res.data.hasMore))
+      setCurrentOffset(searchOffset)
+      setOffsetStack(stack)
       setSelected({})
     } catch (e) {
       const msg =
@@ -84,6 +96,13 @@ const Discover = ({ onImported }) => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const startSearch = () => doSearch(0, []) // fresh search resets pagination
+  const nextPage = () => doSearch(nextOffset, [...offsetStack, currentOffset])
+  const prevPage = () => {
+    const prev = offsetStack[offsetStack.length - 1] || 0
+    doSearch(prev, offsetStack.slice(0, -1))
   }
 
   const importOne = async (paper) => {
@@ -146,7 +165,7 @@ const Discover = ({ onImported }) => {
 
   const importable = results.filter((p) => p.canImport)
   const selectedCount = Object.values(selected).filter(Boolean).length
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const showPager = pageNumber > 1 || hasMore
 
   return (
     <Box>
@@ -167,7 +186,7 @@ const Discover = ({ onImported }) => {
               placeholder="e.g. graph neural networks"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && runSearch(0)}
+              onKeyDown={(e) => e.key === 'Enter' && startSearch()}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -195,7 +214,7 @@ const Discover = ({ onImported }) => {
               fullWidth
               variant="contained"
               startIcon={<SearchIcon />}
-              onClick={() => runSearch(0)}
+              onClick={startSearch}
               disabled={loading}
               sx={{ height: 40 }}
             >
@@ -387,15 +406,24 @@ const Discover = ({ onImported }) => {
             ))}
           </Grid>
 
-          {totalPages > 1 && (
+          {showPager && (
             <Stack direction="row" spacing={2} justifyContent="center" alignItems="center" sx={{ mt: 4 }}>
-              <Button disabled={page === 0 || loading} onClick={() => runSearch(page - 1)}>
+              <Button
+                variant="outlined"
+                disabled={pageNumber === 1 || loading}
+                onClick={prevPage}
+              >
                 Previous
               </Button>
               <Typography variant="body2" color="text.secondary">
-                Page {page + 1} of {totalPages}
+                Page {pageNumber}
+                {total > 0 ? ` · ${total.toLocaleString()} results` : ''}
               </Typography>
-              <Button disabled={page + 1 >= totalPages || loading} onClick={() => runSearch(page + 1)}>
+              <Button
+                variant="outlined"
+                disabled={!hasMore || loading}
+                onClick={nextPage}
+              >
                 Next
               </Button>
             </Stack>

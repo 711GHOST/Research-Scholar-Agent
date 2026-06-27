@@ -44,7 +44,8 @@ const sendMessage = async (req, res, next) => {
 
     message = message.trim().slice(0, MAX_MESSAGE_LENGTH);
 
-    if (sessionId !== undefined && typeof sessionId !== 'string') {
+    // sessionId is optional; null/undefined both mean "start a new session"
+    if (sessionId !== undefined && sessionId !== null && typeof sessionId !== 'string') {
       return res.status(400).json({ success: false, message: 'Invalid session id' });
     }
 

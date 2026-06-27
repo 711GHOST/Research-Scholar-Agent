@@ -154,6 +154,52 @@ async function arxivSearch(query, limit, offset) {
   return parseArxiv(resp.data);
 }
 
+/* ------------------- Normalized source fetchers ------------------ */
+
+async function ssFetch(query, srcOffset, count) {
+  const resp = await semanticScholarSearch({
+    query,
+    fields: SS_FIELDS,
+    limit: Math.min(count, 100),
+    offset: srcOffset,
+  });
+  return { items: mapSemanticScholar(resp.data?.data), total: resp.data?.total || 0 };
+}
+
+async function arxivFetch(query, srcOffset, count) {
+  const { results, total } = await arxivSearch(query, Math.min(count, 100), srcOffset);
+  return { items: results, total };
+}
+
+/**
+ * Collect exactly `pageSize` filtered results for one page using cursor-based
+ * pagination. When filters (open-access / year) would drop items, we over-fetch
+ * from the source to back-fill the page, and return `nextOffset` — the source
+ * offset where the *next* page should resume — so paging never skips or repeats.
+ */
+async function collectPage(fetcher, query, startOffset, pageSize, passes, needsBackfill) {
+  const kept = [];
+  let cursor = startOffset;
+  let total = 0;
+  const CHUNK = Math.min(needsBackfill ? pageSize * 3 : pageSize, 100);
+
+  for (let iter = 0; iter < 6; iter++) {
+    const { items, total: t } = await fetcher(query, cursor, CHUNK);
+    if (t) total = t;
+    for (let i = 0; i < items.length; i++) {
+      if (passes(items[i])) kept.push({ item: items[i], srcIdx: cursor + i });
+    }
+    cursor += items.length;
+    if (items.length < CHUNK) break; // source exhausted
+    if (kept.length > pageSize) break; // have a full page + lookahead
+  }
+
+  const results = kept.slice(0, pageSize).map((k) => k.item);
+  const nextOffset = kept.length > pageSize ? kept[pageSize].srcIdx : cursor;
+  const hasMore = kept.length > pageSize || (total > 0 && cursor < total);
+  return { results, total, nextOffset, hasMore };
+}
+
 /* --------------------------- Handler ---------------------------- */
 
 const searchExternal = async (req, res) => {
@@ -166,7 +212,7 @@ const searchExternal = async (req, res) => {
       fromYear,
       toYear,
       lastNYears,
-      limit = 20,
+      limit = 10,
       offset = 0,
       sort,
       openAccess,
@@ -183,70 +229,63 @@ const searchExternal = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Search query is required' });
     }
 
-    const lim = Math.min(Number(limit) || 10, 100);
-    const off = Math.max(Number(offset) || 0, 0);
+    const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 25);
+    const startOffset = Math.max(Number(offset) || 0, 0);
+    const wantOpenAccess = openAccess === 'true' || openAccess === true;
 
-    let results = [];
-    let total = 0;
+    // Build a single filter predicate used during collection.
+    const sinceYear = lastNYears ? new Date().getFullYear() - parseInt(lastNYears, 10) + 1 : null;
+    const from = !lastNYears && fromYear ? parseInt(fromYear, 10) : null;
+    const to = !lastNYears && toYear ? parseInt(toYear, 10) : null;
+    const passes = (p) => {
+      if (sinceYear != null && !(p.year && p.year >= sinceYear)) return false;
+      if (from != null && !(p.year && p.year >= from)) return false;
+      if (to != null && !(p.year && p.year <= to)) return false;
+      if (wantOpenAccess && !p.isOpenAccess) return false;
+      return true;
+    };
+    const needsBackfill = wantOpenAccess || sinceYear != null || from != null || to != null;
+
+    let out;
     let source = 'semantic_scholar';
-
-    // 1) Try Semantic Scholar; fall back to arXiv on rate-limit/auth/server errors.
     try {
-      const resp = await semanticScholarSearch({
-        query,
-        fields: SS_FIELDS,
-        limit: lim,
-        offset: off,
-      });
-      results = mapSemanticScholar(resp.data?.data);
-      total = resp.data?.total || results.length;
+      out = await collectPage(ssFetch, query, startOffset, pageSize, passes, needsBackfill);
+      // If Semantic Scholar has nothing on the first page, try arXiv instead.
+      if (out.results.length === 0 && startOffset === 0) {
+        try {
+          const arx = await collectPage(arxivFetch, query, startOffset, pageSize, passes, needsBackfill);
+          if (arx.results.length) {
+            out = arx;
+            source = 'arxiv';
+          }
+        } catch (e) {
+          /* keep empty SS result */
+        }
+      }
     } catch (ssErr) {
       const status = ssErr.response?.status;
-      const recoverable =
-        ssErr.code || [429, 401, 403, 500, 502, 503, 504].includes(status);
+      const recoverable = ssErr.code || [429, 401, 403, 500, 502, 503, 504].includes(status);
       if (!recoverable) throw ssErr;
       console.warn(`Semantic Scholar unavailable (${status || ssErr.code}); falling back to arXiv.`);
-      const arx = await arxivSearch(query, lim, off);
-      results = arx.results;
-      total = arx.total;
+      out = await collectPage(arxivFetch, query, startOffset, pageSize, passes, needsBackfill);
       source = 'arxiv';
     }
 
-    // 2) If SS returned nothing, also try arXiv (broader open-access coverage).
-    if (results.length === 0 && source === 'semantic_scholar') {
-      try {
-        const arx = await arxivSearch(query, lim, off);
-        if (arx.results.length) {
-          results = arx.results;
-          total = arx.total;
-          source = 'arxiv';
-        }
-      } catch (e) {
-        /* keep the empty SS result */
-      }
-    }
-
-    // 3) Unified client-side filters.
-    if (lastNYears) {
-      const n = parseInt(lastNYears, 10);
-      if (!isNaN(n)) {
-        const since = new Date().getFullYear() - n + 1;
-        results = results.filter((p) => p.year && p.year >= since);
-      }
-    } else if (fromYear || toYear) {
-      const from = fromYear ? parseInt(fromYear, 10) : -Infinity;
-      const to = toYear ? parseInt(toYear, 10) : Infinity;
-      results = results.filter((p) => p.year && p.year >= from && p.year <= to);
-    }
-
-    if (openAccess === 'true' || openAccess === true) {
-      results = results.filter((p) => p.isOpenAccess);
-    }
-
+    const results = out.results;
     if (sort === 'year_desc') results.sort((a, b) => (b.year || 0) - (a.year || 0));
     else if (sort === 'year_asc') results.sort((a, b) => (a.year || 0) - (b.year || 0));
 
-    return res.json({ success: true, source, total, count: results.length, results });
+    return res.json({
+      success: true,
+      source,
+      total: out.total,
+      count: results.length,
+      results,
+      offset: startOffset,
+      nextOffset: out.nextOffset,
+      hasMore: out.hasMore,
+      pageSize,
+    });
   } catch (error) {
     const status = error.response?.status;
     console.error('External search error:', status || error.message);
