@@ -60,6 +60,35 @@ const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   maxUploadBytes: parseInt(process.env.MAX_UPLOAD_BYTES, 10) || 25 * 1024 * 1024, // 25MB
+
+  appName: process.env.APP_NAME || 'Research Scholar Agent',
+
+  // When true (default outside production), OTP codes are returned in the API
+  // response and logged, so the app is fully testable without an SMS/email
+  // provider. NEVER enable this in production.
+  otpDevMode:
+    process.env.OTP_DEV_MODE === 'true' ||
+    (process.env.OTP_DEV_MODE !== 'false' && process.env.NODE_ENV !== 'production'),
+
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT, 10) || 587,
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@scholar.local',
+  },
+
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    authToken: process.env.TWILIO_AUTH_TOKEN || '',
+    fromNumber: process.env.TWILIO_FROM_NUMBER || '',
+  },
+
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
 };
 
 module.exports = { config, validateEnv };

@@ -54,13 +54,7 @@ const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        profile: user.profile,
-      },
+      user: user.toPublicJSON(),
     });
   } catch (error) {
     next(error);
@@ -114,14 +108,7 @@ const login = async (req, res, next) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        profile: user.profile,
-        usageStats: user.usageStats,
-      },
+      user: user.toPublicJSON(),
     });
   } catch (error) {
     next(error);
@@ -144,18 +131,7 @@ const getMe = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        profile: user.profile,
-        usageStats: user.usageStats,
-        createdAt: user.createdAt,
-      },
-    });
+    res.json({ success: true, user: user.toPublicJSON() });
   } catch (error) {
     next(error);
   }

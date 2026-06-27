@@ -334,13 +334,39 @@ research-scholar-agent/
 - `GET /api/chat/sessions/:sessionId` - Get chat session (protected)
 - `DELETE /api/chat/sessions/:sessionId` - Delete chat session (protected)
 
-### Discover / External (Semantic Scholar)
+### Discover / External (Semantic Scholar + arXiv)
 
 - `GET /api/external/search` - Search papers; returns the direct open-access
-  `pdfUrl` and a `canImport` flag (protected, rate limited)
+  `pdfUrl` and a `canImport` flag (protected, rate limited). Queries Semantic
+  Scholar and **automatically falls back to arXiv** when Semantic Scholar is
+  rate limited or unavailable, so search keeps working. The response includes a
+  `source` field (`semantic_scholar` | `arxiv`).
 - `POST /api/external/import` - Download an **open-access PDF** into your library
   and auto-analyze it. Body: `{ title, authors, pdfUrl, doi, year, venue, topic }`
   (protected, SSRF-protected, rate limited)
+
+> Note: the public Semantic Scholar endpoint is heavily rate limited without a
+> valid API key. Set `SEMANTIC_SCHOLAR_API_KEY` for reliable results; otherwise
+> the arXiv fallback covers most STEM queries with importable open-access PDFs.
+
+### Account & Verification
+
+- `PUT  /api/auth/profile` - Update name, role, phone and profile fields
+- `POST /api/auth/otp/request` - Send an OTP to verify a new/current email or
+  phone. Body: `{ channel: 'email'|'phone', target }`. With no SMS/email provider
+  configured the code is returned in the response (dev mode) for testing.
+- `POST /api/auth/otp/verify` - Confirm the code. Body: `{ channel, code }`
+
+### Billing / Subscriptions (Razorpay)
+
+- `GET  /api/billing/plans` - List plans + the user's current subscription
+- `POST /api/billing/checkout` - Create a payment order for a paid plan
+- `POST /api/billing/verify` - Verify payment + activate the subscription
+- `POST /api/billing/cancel` - Downgrade to Free
+- `POST /api/billing/webhook` - Razorpay webhook (signature-verified)
+
+> Without `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` the billing flow runs in **mock
+> mode** (Subscribe simulates a successful payment) so it is fully demoable.
 
 ### AI Service (Internal)
 

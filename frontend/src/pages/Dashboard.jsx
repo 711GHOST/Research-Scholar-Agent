@@ -4,6 +4,7 @@ import TravelExploreIcon from '@mui/icons-material/TravelExplore'
 import ChatIcon from '@mui/icons-material/Chat'
 import InsightsIcon from '@mui/icons-material/Insights'
 import PersonIcon from '@mui/icons-material/Person'
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium'
 
 import DashboardLayout from '../components/Layout/DashboardLayout'
 import Papers from '../components/Dashboard/Papers'
@@ -11,12 +12,14 @@ import Discover from '../components/Dashboard/Discover'
 import Chatbot from '../components/Dashboard/Chatbot'
 import Analytics from '../components/Dashboard/Analytics'
 import Profile from '../components/Dashboard/Profile'
+import Billing from '../components/Dashboard/Billing'
 
 const NAV_ITEMS = [
   { key: 'library', label: 'My Library', icon: <LibraryBooksIcon /> },
   { key: 'discover', label: 'Discover Papers', icon: <TravelExploreIcon /> },
   { key: 'chatbot', label: 'Research Chat', icon: <ChatIcon /> },
   { key: 'analytics', label: 'Analytics', icon: <InsightsIcon /> },
+  { key: 'billing', label: 'Subscription', icon: <WorkspacePremiumIcon /> },
   { key: 'profile', label: 'Profile', icon: <PersonIcon /> },
 ]
 
@@ -29,7 +32,8 @@ const Dashboard = () => {
       {active === 'discover' && <Discover onImported={() => setActive('library')} />}
       {active === 'chatbot' && <Chatbot />}
       {active === 'analytics' && <Analytics />}
-      {active === 'profile' && <Profile />}
+      {active === 'billing' && <Billing />}
+      {active === 'profile' && <Profile onManagePlan={() => setActive('billing')} />}
     </DashboardLayout>
   )
 }

@@ -76,7 +76,12 @@ export const AuthProvider = ({ children }) => {
     setUser(null)
   }, [])
 
-  const value = { user, loading, token, login, register, logout, fetchUser, setUser }
+  // Merge server-returned user data into state (after profile/billing updates)
+  const updateUser = useCallback((updated) => {
+    setUser((prev) => ({ ...prev, ...updated }))
+  }, [])
+
+  const value = { user, loading, token, login, register, logout, fetchUser, setUser, updateUser }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -1,8 +1,7 @@
 /**
  * User Model
- * Defines the schema for users in the system
- * Supports roles: Student, Research Scholar, Faculty
- * Stores authentication credentials and profile information
+ * Stores authentication credentials, profile, verification state and the
+ * user's subscription. Supports roles: Student, Research Scholar, Faculty.
  */
 
 const mongoose = require('mongoose');
@@ -26,11 +25,14 @@ const userSchema = new mongoose.Schema(
         'Please provide a valid email',
       ],
     },
+    emailVerified: { type: Boolean, default: false },
+    phone: { type: String, trim: true, default: '' },
+    phoneVerified: { type: Boolean, default: false },
     password: {
       type: String,
       required: [true, 'Please provide a password'],
       minlength: 6,
-      select: false, // Don't return password by default
+      select: false,
     },
     role: {
       type: String,
@@ -38,55 +40,57 @@ const userSchema = new mongoose.Schema(
       default: 'Student',
     },
     profile: {
-      institution: {
+      institution: { type: String, trim: true },
+      department: { type: String, trim: true },
+      researchDomain: { type: String, trim: true },
+      bio: { type: String, trim: true, maxlength: 500 },
+    },
+    subscription: {
+      plan: { type: String, enum: ['free', 'pro', 'team'], default: 'free' },
+      status: {
         type: String,
-        trim: true,
+        enum: ['active', 'inactive', 'cancelled', 'past_due'],
+        default: 'active', // free plan is active by default
       },
-      department: {
-        type: String,
-        trim: true,
-      },
-      researchDomain: {
-        type: String,
-        trim: true,
-      },
+      provider: { type: String, default: '' }, // e.g. 'razorpay'
+      providerRef: { type: String, default: '' }, // order/subscription id
+      currentPeriodEnd: { type: Date },
     },
     usageStats: {
-      papersAnalyzed: {
-        type: Number,
-        default: 0,
-      },
-      totalAnalysisTime: {
-        type: Number, // in seconds
-        default: 0,
-      },
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
+      papersAnalyzed: { type: Number, default: 0 },
+      totalAnalysisTime: { type: Number, default: 0 }, // seconds
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Hash password before saving
+// Hash password before saving (only when modified)
 userSchema.pre('save', async function (next) {
-  // Only hash if password is modified (not on other updates)
-  if (!this.isModified('password')) {
-    return next();
-  }
-
-  // Hash password with cost of 12
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-// Method to compare password for login
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return bcrypt.compare(enteredPassword, this.password);
+};
+
+// Shared serializer so controllers return a consistent user shape
+userSchema.methods.toPublicJSON = function () {
+  return {
+    id: this._id,
+    name: this.name,
+    email: this.email,
+    emailVerified: this.emailVerified,
+    phone: this.phone,
+    phoneVerified: this.phoneVerified,
+    role: this.role,
+    profile: this.profile,
+    subscription: this.subscription,
+    usageStats: this.usageStats,
+    createdAt: this.createdAt,
+  };
 };
 
 module.exports = mongoose.model('User', userSchema);

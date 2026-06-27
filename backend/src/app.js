@@ -19,6 +19,7 @@ const authRoutes = require('./routes/authRoutes');
 const paperRoutes = require('./routes/paperRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const externalRoutes = require('./routes/externalRoutes');
+const billingRoutes = require('./routes/billingRoutes');
 
 const app = express();
 
@@ -41,8 +42,16 @@ app.use(
   })
 );
 
-// Body parsers with sane limits (PDFs are uploaded via multipart, not JSON)
-app.use(express.json({ limit: '1mb' }));
+// Body parsers with sane limits (PDFs are uploaded via multipart, not JSON).
+// Capture the raw body so payment webhook signatures can be verified.
+app.use(
+  express.json({
+    limit: '1mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Strip keys containing "$" or "." to neutralize NoSQL operator injection
@@ -65,6 +74,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/papers', paperRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/external', externalRoutes);
+app.use('/api/billing', billingRoutes);
 
 // 404 handler
 app.use((req, res) => {
