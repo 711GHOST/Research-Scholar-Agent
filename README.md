@@ -313,11 +313,22 @@ research-scholar-agent/
 
 ## 🔗 API Endpoints
 
-### Authentication
+### Authentication & Account
 
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - Login user
 - `GET /api/auth/me` - Get current user (protected)
+- `PUT /api/auth/profile` - Edit profile (name, role, phone, institution, bio…) (protected)
+- `POST /api/auth/otp/request` - Send an email/phone verification code (protected)
+- `POST /api/auth/otp/verify` - Confirm the code and verify email/phone (protected)
+
+### Billing / Subscription
+
+- `GET /api/billing/plans` - List plans + current subscription (protected)
+- `POST /api/billing/checkout` - Create a Razorpay order (mock if unconfigured) (protected)
+- `POST /api/billing/verify` - Verify payment and activate the plan (protected)
+- `POST /api/billing/cancel` - Downgrade to Free (protected)
+- `POST /api/billing/webhook` - Razorpay webhook (signature-verified)
 
 ### Papers
 
@@ -336,8 +347,10 @@ research-scholar-agent/
 
 ### Discover / External (Semantic Scholar + arXiv)
 
-- `GET /api/external/search` - Search papers; returns the direct open-access
-  `pdfUrl` and a `canImport` flag (protected, rate limited). Queries Semantic
+- `GET /api/external/search` - Search papers (Semantic Scholar, with automatic
+  **arXiv fallback** when Semantic Scholar is rate limited/unavailable); returns
+  the direct open-access `pdfUrl`, a `canImport` flag, and the `source` used
+  (protected, rate limited). Queries Semantic
   Scholar and **automatically falls back to arXiv** when Semantic Scholar is
   rate limited or unavailable, so search keeps working. The response includes a
   `source` field (`semantic_scholar` | `arxiv`).
