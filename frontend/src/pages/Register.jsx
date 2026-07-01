@@ -128,8 +128,7 @@ const Register = () => {
                   ),
                 }}
               />
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+              <Box display="flex" gap={2}>
                   <TextField
                     fullWidth
                     size="medium"
@@ -155,8 +154,6 @@ const Register = () => {
                       ),
                     }}
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     size="medium"
@@ -170,8 +167,7 @@ const Register = () => {
                     error={passwordMismatch}
                     helperText={passwordMismatch ? 'Does not match' : ' '}
                   />
-                </Grid>
-              </Grid>
+              </Box>
               <TextField
                 fullWidth
                 size="medium"
@@ -185,14 +181,10 @@ const Register = () => {
                 <MenuItem value="Research Scholar">Research Scholar</MenuItem>
                 <MenuItem value="Faculty">Faculty</MenuItem>
               </TextField>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+              <Box display="flex" gap={2}>
                   <TextField fullWidth size="medium" label="Institution" name="institution" value={form.institution} onChange={change} />
-                </Grid>
-                <Grid item xs={12} sm={6}>
                   <TextField fullWidth size="medium" label="Department" name="department" value={form.department} onChange={change} />
-                </Grid>
-              </Grid>
+              </Box>
               <TextField
                 fullWidth
                 size="medium"

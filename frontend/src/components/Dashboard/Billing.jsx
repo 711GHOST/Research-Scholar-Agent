@@ -156,7 +156,7 @@ const Billing = () => {
 
       {!paymentsConfigured && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          Payments are in <strong>demo mode</strong> — “Subscribe” simulates a successful
+          Payments are in <strong>demo mode</strong> - “Subscribe” simulates a successful
           payment. Add Razorpay keys on the server to enable real checkout.
         </Alert>
       )}

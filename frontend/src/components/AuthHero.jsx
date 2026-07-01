@@ -38,7 +38,7 @@ const AuthHero = () => (
       Read less. Understand more.
     </Typography>
     <Typography sx={{ mt: 2, maxWidth: 520, opacity: 0.9 }}>
-      Your AI co-pilot for research papers — analyze, summarize, discover and chat
+      Your AI co-pilot for research papers - analyze, summarize, discover and chat
       across your literature in one place.
     </Typography>
 
