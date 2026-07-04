@@ -47,8 +47,9 @@ openssl rand -hex 24
 
 ## 2A. Backend + AI on **Render** (Blueprint — easiest)
 
-The repo includes `render.yaml`, which provisions both services with a persistent
-uploads disk and links the shared secret automatically.
+The repo includes `render.yaml`, which provisions both services and links the
+shared secret automatically. No persistent disk is needed — PDFs are stored in
+MongoDB (GridFS), so this works on the **free tier**.
 
 1. Render → **New → Blueprint** → connect this repo → **Apply**.
 2. It creates `rsa-ai-service` and `rsa-backend`. After the first build, open each
@@ -67,8 +68,8 @@ Create two **Web Services** from the same repo, **Runtime: Docker**:
 
 - **AI service** — Root `ai-service`, Dockerfile `ai-service/Dockerfile`.
   Env: `AI_SERVICE_SECRET`, `GEMINI_API_KEY` (optional), `AI_ALLOWED_ORIGINS=<backend URL>`.
-- **Backend** — Root `backend`, Dockerfile `backend/Dockerfile`. Add a **Disk**
-  mounted at `/app/uploads`. Env: see the table at the bottom. Set
+- **Backend** — Root `backend`, Dockerfile `backend/Dockerfile`. No disk needed
+  (PDFs go to MongoDB/GridFS). Env: see the table at the bottom. Set
   `AI_SERVICE_SECRET` to the *same* value as the AI service.
 
 > Free-tier services **sleep after 15 min idle**; the first request after that takes
@@ -86,7 +87,7 @@ Northflank gives you real internal networking, so the AI service can stay privat
      Port `8000` (or read `$PORT`). Add env `AI_SERVICE_SECRET`, `GEMINI_API_KEY`,
      `AI_ALLOWED_ORIGINS`. Keep it **internal** (no public ingress needed).
    - **backend**: Dockerfile `/backend/Dockerfile`, context `/backend`. Expose a
-     **public port** `5000`. Add a **Volume** mounted at `/app/uploads`.
+     **public port** `5000`. No volume needed (PDFs go to MongoDB/GridFS).
 3. Set the backend's `AI_SERVICE_URL` to the AI service's **internal address**
    (e.g. `http://ai-service:8000`) and use the same `AI_SERVICE_SECRET` on both.
 4. Set the rest of the backend env (table below), then deploy. Verify `/health`.
@@ -133,9 +134,10 @@ curl https://<backend>/health
 
 ## 5. Production gotchas (read these)
 
-- **Uploaded PDFs need a persistent disk.** Container filesystems are ephemeral —
-  without the Render Disk / Northflank Volume mounted at `/app/uploads`, uploaded
-  and imported papers disappear on every redeploy. (The `render.yaml` already adds one.)
+- **Uploaded PDFs are stored in MongoDB (GridFS)** — no persistent disk needed, so
+  this runs on Render's free tier. Files survive redeploys and re-analysis works.
+  (Atlas free tier = 512 MB; plenty for a demo. For heavy use, upgrade Atlas or
+  switch the file store to S3/Backblaze.)
 - **OTP delivery.** With `OTP_DEV_MODE=false` and no SMTP configured, email
   verification returns 503. Set `SMTP_*` (Gmail app password, SendGrid, Resend,
   etc.) to send real codes — or keep `OTP_DEV_MODE=true` only for a demo (it

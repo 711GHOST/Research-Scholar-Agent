@@ -10,19 +10,16 @@
  */
 
 const axios = require('axios');
-const fs = require('fs').promises;
-const path = require('path');
 const crypto = require('crypto');
 
 const { config } = require('../config/env');
 const { downloadPdfSafely } = require('../utils/security');
+const { storePdf } = require('../services/fileStore');
 
 const SS_SEARCH_URL = 'https://api.semanticscholar.org/graph/v1/paper/search';
 const SS_FIELDS =
   'paperId,title,authors,year,url,venue,abstract,isOpenAccess,openAccessPdf,externalIds';
 const ARXIV_URL = 'http://export.arxiv.org/api/query';
-
-const uploadDir = path.join(__dirname, '../../uploads');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -302,7 +299,6 @@ const searchExternal = async (req, res) => {
 /* --------------------------- Import ----------------------------- */
 
 const importExternal = async (req, res) => {
-  let filePath = null;
   try {
     const { title, authors, pdfUrl, url, doi, year, venue, topic } = req.body;
 
@@ -324,17 +320,14 @@ const importExternal = async (req, res) => {
       });
     }
 
-    if (!(await fs.access(uploadDir).then(() => true).catch(() => false))) {
-      await fs.mkdir(uploadDir, { recursive: true });
-    }
-
     const safeTitle = (title || 'paper')
       .replace(/[^a-z0-9\-_. ]/gi, '_')
       .trim()
       .slice(0, 80);
     const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${safeTitle}.pdf`;
-    filePath = path.join(uploadDir, fileName);
-    await fs.writeFile(filePath, buffer);
+
+    // Store the downloaded PDF in GridFS (MongoDB) — no disk required.
+    const fileId = await storePdf(buffer, fileName);
 
     const Paper = require('../models/Paper');
     const User = require('../models/User');
@@ -348,7 +341,7 @@ const importExternal = async (req, res) => {
           : String(authors).split(',').map((a) => a.trim()).filter(Boolean)
         : [],
       fileName,
-      filePath,
+      fileId,
       fileSize: buffer.length,
       status: 'uploaded',
       metadata: {
@@ -370,7 +363,6 @@ const importExternal = async (req, res) => {
 
     return res.json({ success: true, message: 'Paper imported and queued for analysis', paper });
   } catch (error) {
-    if (filePath) await fs.unlink(filePath).catch(() => {});
     console.error('Import external error:', error.message || error);
     return res.status(500).json({ success: false, message: 'Import failed' });
   }

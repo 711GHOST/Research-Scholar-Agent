@@ -10,6 +10,14 @@ const User = require('../models/User');
 const fs = require('fs').promises;
 const aiClient = require('../services/aiClient');
 const { escapeRegex, isPdfBuffer } = require('../utils/security');
+const { storePdf, getPdf, deletePdf } = require('../services/fileStore');
+
+// Read a paper's PDF bytes from GridFS (preferred) or a legacy on-disk path.
+const readPaperBuffer = async (paper) => {
+  if (paper.fileId) return getPdf(paper.fileId);
+  if (paper.filePath) return fs.readFile(paper.filePath);
+  throw new Error('Paper has no stored file');
+};
 
 // Helper: perform analysis for a paper record (internal use)
 const performAnalysis = async (paper, userId) => {
@@ -17,7 +25,7 @@ const performAnalysis = async (paper, userId) => {
   await paper.save();
 
   try {
-    const fileBuffer = await fs.readFile(paper.filePath);
+    const fileBuffer = await readPaperBuffer(paper);
 
     const analysisData = await aiClient.analyzePaper({
       fileName: paper.fileName,
@@ -72,25 +80,23 @@ const performAnalysis = async (paper, userId) => {
  */
 const uploadPaper = async (req, res, next) => {
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res
         .status(400)
         .json({ success: false, message: 'Please upload a PDF file' });
     }
 
-    // Verify the file is actually a PDF by reading only its first bytes
-    // (mimetype alone is client-controlled and easily spoofed).
-    const handle = await fs.open(req.file.path, 'r');
-    const { buffer: head } = await handle.read(Buffer.alloc(5), 0, 5, 0);
-    await handle.close();
-    if (!isPdfBuffer(head)) {
-      await fs.unlink(req.file.path).catch(() => {});
+    // Verify the file is actually a PDF (mimetype alone is client-controlled).
+    if (!isPdfBuffer(req.file.buffer)) {
       return res
         .status(400)
         .json({ success: false, message: 'Uploaded file is not a valid PDF' });
     }
 
     const { title, authors } = req.body;
+
+    // Store the bytes in GridFS (MongoDB) — no disk required.
+    const fileId = await storePdf(req.file.buffer, req.file.originalname);
 
     const paper = await Paper.create({
       userId: req.user.id,
@@ -102,7 +108,7 @@ const uploadPaper = async (req, res, next) => {
             .filter(Boolean)
         : [],
       fileName: req.file.originalname,
-      filePath: req.file.path,
+      fileId,
       fileSize: req.file.size,
       status: 'uploaded',
     });
@@ -113,9 +119,6 @@ const uploadPaper = async (req, res, next) => {
 
     res.status(201).json({ success: true, paper });
   } catch (error) {
-    if (req.file) {
-      await fs.unlink(req.file.path).catch(() => {});
-    }
     next(error);
   }
 };
@@ -182,7 +185,10 @@ const deletePaper = async (req, res, next) => {
 
     await Summary.deleteOne({ paperId: paper._id });
 
-    if (paper.filePath) {
+    // Remove the stored PDF (GridFS, or a legacy on-disk file).
+    if (paper.fileId) {
+      await deletePdf(paper.fileId);
+    } else if (paper.filePath) {
       await fs.unlink(paper.filePath).catch((fileError) => {
         console.error('Error deleting file:', fileError.message);
       });

@@ -25,6 +25,8 @@ services:
         value: https://rsa-backend.onrender.com   # <- set to the backend URL Render assigns
 
   # ---- Node/Express backend API ----
+  # PDFs are stored in MongoDB (GridFS), so NO persistent disk is required —
+  # this works on Render's free tier.
   - type: web
     name: rsa-backend
     runtime: docker
@@ -32,10 +34,6 @@ services:
     dockerContext: ./backend
     plan: free
     healthCheckPath: /health
-    disk:
-      name: uploads
-      mountPath: /app/uploads   # persist uploaded PDFs across deploys/restarts
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production

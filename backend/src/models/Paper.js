@@ -29,9 +29,13 @@ const paperSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // GridFS id where the PDF bytes are stored (preferred).
+    fileId: {
+      type: mongoose.Schema.Types.ObjectId,
+    },
+    // Legacy on-disk path (kept for backward compatibility with old records).
     filePath: {
       type: String,
-      required: true,
     },
     fileSize: {
       type: Number, // in bytes

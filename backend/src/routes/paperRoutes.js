@@ -6,9 +6,6 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
 const {
   uploadPaper,
   getPapers,
@@ -21,25 +18,8 @@ const { protect } = require('../middleware/auth');
 const { heavyLimiter } = require('../middleware/rateLimiters');
 const { config } = require('../config/env');
 
-const uploadDir = path.join(__dirname, '../../uploads');
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Never trust the client filename — generate a random, collision-free,
-    // path-traversal-proof name and force a .pdf extension.
-    const unique = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
-    cb(null, `${req.user.id}-${unique}.pdf`);
-  },
-});
-
-// Only accept files that declare a PDF mimetype (content is re-verified in the
-// controller via magic bytes).
+// Keep the upload in memory; the controller verifies it and streams it into
+// GridFS (MongoDB), so no writable disk is required in production.
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === 'application/pdf') {
     cb(null, true);
@@ -49,7 +29,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: config.maxUploadBytes, files: 1 },
   fileFilter,
 });

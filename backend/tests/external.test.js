@@ -18,7 +18,6 @@ jest.mock('../src/services/aiClient', () => ({
   chat: jest.fn(),
 }));
 
-const fs = require('fs');
 const request = require('supertest');
 const app = require('../src/app');
 const security = require('../src/utils/security');
@@ -85,6 +84,7 @@ describe('External import API', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.paper.title).toBe('Great Open Paper');
     expect(res.body.paper.topic).toBe('machine learning');
+    expect(res.body.paper.fileId).toBeTruthy(); // stored in GridFS
     expect(security.downloadPdfSafely).toHaveBeenCalledWith('https://arxiv.org/pdf/1234.5678.pdf');
 
     // It should now appear in the user's library
@@ -92,8 +92,5 @@ describe('External import API', () => {
       .get('/api/papers')
       .set('Authorization', `Bearer ${token}`);
     expect(list.body.papers.length).toBe(1);
-
-    const fp = res.body.paper.filePath;
-    if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
   });
 });

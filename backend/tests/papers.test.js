@@ -4,8 +4,6 @@ jest.mock('../src/services/aiClient', () => ({
   chat: jest.fn(),
 }));
 
-const fs = require('fs');
-const path = require('path');
 const request = require('supertest');
 const app = require('../src/app');
 const aiClient = require('../src/services/aiClient');
@@ -34,7 +32,7 @@ describe('Papers API', () => {
     expect(res.status).toBe(401);
   });
 
-  test('uploads a valid PDF', async () => {
+  test('uploads a valid PDF into GridFS', async () => {
     const res = await request(app)
       .post('/api/papers/upload')
       .set('Authorization', `Bearer ${token}`)
@@ -43,11 +41,9 @@ describe('Papers API', () => {
     expect(res.status).toBe(201);
     expect(res.body.paper.title).toBe('sample');
     expect(res.body.paper.status).toBe('uploaded');
-
-    // cleanup the file written to /uploads
-    if (res.body.paper.filePath && fs.existsSync(res.body.paper.filePath)) {
-      fs.unlinkSync(res.body.paper.filePath);
-    }
+    // Stored in GridFS, not on disk
+    expect(res.body.paper.fileId).toBeTruthy();
+    expect(res.body.paper.filePath).toBeUndefined();
   });
 
   test('rejects a non-PDF disguised with a .pdf name', async () => {
@@ -85,7 +81,10 @@ describe('Papers API', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
+    // The PDF was read back out of GridFS and sent to the AI service.
     expect(aiClient.analyzePaper).toHaveBeenCalledTimes(1);
+    const sentContent = aiClient.analyzePaper.mock.calls[0][0].fileContent;
+    expect(Buffer.from(sentContent, 'base64').equals(PDF_BYTES)).toBe(true);
     expect(res.body.summary.relatedWorkSuggestions[0].title).toBe('Survey X');
 
     const view = await request(app)
@@ -93,12 +92,27 @@ describe('Papers API', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(view.body.paper.status).toBe('analyzed');
     expect(view.body.paper.summary).not.toBeNull();
-
-    const fp = upload.body.paper.filePath;
-    if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
   });
 
-  test('a user cannot read another user\'s paper', async () => {
+  test('delete removes the paper (and its GridFS file)', async () => {
+    const upload = await request(app)
+      .post('/api/papers/upload')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', PDF_BYTES, 'gone.pdf');
+    const paperId = upload.body.paper._id;
+
+    const del = await request(app)
+      .delete(`/api/papers/${paperId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(del.status).toBe(200);
+
+    const view = await request(app)
+      .get(`/api/papers/${paperId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(view.status).toBe(404);
+  });
+
+  test("a user cannot read another user's paper", async () => {
     const upload = await request(app)
       .post('/api/papers/upload')
       .set('Authorization', `Bearer ${token}`)
@@ -117,8 +131,5 @@ describe('Papers API', () => {
       .get(`/api/papers/${paperId}`)
       .set('Authorization', `Bearer ${otherToken}`);
     expect(res.status).toBe(404);
-
-    const fp = upload.body.paper.filePath;
-    if (fp && fs.existsSync(fp)) fs.unlinkSync(fp);
   });
 });
