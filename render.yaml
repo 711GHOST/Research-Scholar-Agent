@@ -1,0 +1,77 @@
+# Render Blueprint — deploys the backend + AI service from this repo.
+# In Render: New → Blueprint → connect the repo → it reads this file.
+# After the first deploy, set the values marked `sync: false` in the dashboard
+# and confirm the two service URLs below match what Render assigned.
+
+services:
+  # ---- Python AI microservice (public URL, protected by the shared secret) ----
+  - type: web
+    name: rsa-ai-service
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: GEMINI_API_KEY
+        sync: false            # paste your Gemini API key (optional; offline fallback if empty)
+      - key: SEMANTIC_SCHOLAR_API_KEY
+        sync: false            # optional
+      - key: AI_SERVICE_SECRET
+        generateValue: true    # random; the backend references this same value below
+      - key: AI_ALLOWED_ORIGINS
+        value: https://rsa-backend.onrender.com   # <- set to the backend URL Render assigns
+
+  # ---- Node/Express backend API ----
+  - type: web
+    name: rsa-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    disk:
+      name: uploads
+      mountPath: /app/uploads   # persist uploaded PDFs across deploys/restarts
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: MONGODB_URI
+        sync: false            # your MongoDB Atlas connection string
+      - key: AI_SERVICE_URL
+        value: https://rsa-ai-service.onrender.com   # <- set to the AI service URL Render assigns
+      - key: AI_SERVICE_SECRET
+        fromService:
+          type: web
+          name: rsa-ai-service
+          envVarKey: AI_SERVICE_SECRET   # keep both services' secret in sync automatically
+      - key: SEMANTIC_SCHOLAR_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false            # your Vercel URL, e.g. https://research-scholar-agent.vercel.app
+      - key: OTP_DEV_MODE
+        value: "false"         # require a real email/SMS provider in production
+      # Optional providers (leave unset to keep OTP dev-mode / mock payments):
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
