@@ -92,8 +92,14 @@ async def health_check():
     }
 
 
+# NOTE: these endpoints are declared with `def` (not `async def`) on purpose.
+# The work is CPU-bound and blocking (PDF parsing, NLTK, Gemini). FastAPI runs
+# sync path operations in a threadpool, which keeps the event loop free so the
+# /health check keeps responding — otherwise the host (e.g. Render) sees the
+# service as unhealthy during a long analysis and restarts it mid-request,
+# which shows up as "502" / "stream has been aborted" on the caller.
 @app.post("/ai/analyze-paper", response_model=AnalyzePaperResponse)
-async def analyze_paper(request: AnalyzePaperRequest, _=Depends(verify_internal_secret)):
+def analyze_paper(request: AnalyzePaperRequest, _=Depends(verify_internal_secret)):
     start_time = time.time()
     try:
         try:
@@ -145,7 +151,7 @@ async def analyze_paper(request: AnalyzePaperRequest, _=Depends(verify_internal_
 
 
 @app.post("/ai/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, _=Depends(verify_internal_secret)):
+def chat(request: ChatRequest, _=Depends(verify_internal_secret)):
     try:
         response = ai_analyzer.chat(message=request.message, context=request.context)
         return ChatResponse(success=True, response=response, context=request.context)
@@ -155,7 +161,7 @@ async def chat(request: ChatRequest, _=Depends(verify_internal_secret)):
 
 
 @app.post("/ai/suggest-gaps")
-async def suggest_gaps(request: Dict[str, Any], _=Depends(verify_internal_secret)):
+def suggest_gaps(request: Dict[str, Any], _=Depends(verify_internal_secret)):
     topic = request.get("topic", "")
     if not topic:
         raise HTTPException(status_code=400, detail="Topic is required")

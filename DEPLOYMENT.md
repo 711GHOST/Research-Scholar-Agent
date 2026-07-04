@@ -145,8 +145,16 @@ curl https://<backend>/health
 - **Payments.** Without `RAZORPAY_KEY_ID/SECRET`, subscriptions run in **mock mode**
   (simulated success). Add real keys + set the webhook to
   `https://<backend>/api/billing/webhook` for live billing.
-- **Gemini key format.** A standard key looks like `AIza...`. If yours is rejected,
-  the AI service falls back to offline mode (still works, lower-quality summaries).
+- **Gemini key format.** A standard key looks like `AIza...` (from aistudio.google.com).
+  If yours is rejected, the AI service falls back to offline mode (still works,
+  lower-quality summaries). Leaving `GEMINI_API_KEY` blank forces fast offline mode.
+- **"Analysis failed" with `502` / `stream has been aborted` in the backend logs.**
+  This means the AI service was unreachable/restarting mid-request. It's fixed in
+  code (the analyze/chat endpoints now run in a threadpool so the `/health` check
+  stays responsive, and PDF parsing uses the lighter `pypdf`). If you still see it:
+  redeploy the **AI service** after pulling these changes; on the very first request
+  after idle, the free-tier service cold-starts (~30–60s) — the backend now retries
+  automatically, so just try once more.
 - **Secrets.** Set every secret in the platform dashboard — never commit `.env`.
 - **Atlas IP allow-list** must include your host (or `0.0.0.0/0`).
 

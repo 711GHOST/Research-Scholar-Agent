@@ -45,6 +45,7 @@ def _extract_json(text: str):
 class AIAnalyzer:
     def __init__(self):
         self.use_gemini = USE_GEMINI
+        self._gemini_failures = 0
         if self.use_gemini:
             try:
                 from google import genai
@@ -124,10 +125,22 @@ class AIAnalyzer:
     # ---------- GEMINI ----------
 
     def _generate(self, prompt: str) -> str:
-        response = self.client.models.generate_content(
-            model=self.model_name, contents=prompt
-        )
-        return (response.text or "").strip()
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name, contents=prompt
+            )
+            self._gemini_failures = 0
+            return (response.text or "").strip()
+        except Exception as e:
+            # Circuit breaker: after repeated failures (e.g. an invalid/wrong
+            # key) stop calling Gemini and use the offline analyzer, so analyses
+            # stay fast instead of retrying a dead API for every section.
+            self._gemini_failures += 1
+            if self.use_gemini and self._gemini_failures >= 3:
+                self.use_gemini = False
+                self.model_name = "offline-extractive"
+                print(f"Disabling Gemini after repeated failures: {e}")
+            raise
 
     # ---------- SUMMARIZATION ----------
 

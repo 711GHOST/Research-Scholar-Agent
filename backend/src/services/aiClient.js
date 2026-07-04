@@ -24,19 +24,54 @@ const aiClient = axios.create({
   maxContentLength: 80 * 1024 * 1024,
 });
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retry transient failures. On free-tier hosts the AI service can be cold
+// (waking up returns 502/503) or briefly drop the connection, so one or two
+// spaced retries make analysis reliable without changing behavior on success.
+function isTransient(err) {
+  const status = err.response?.status;
+  if ([502, 503, 504].includes(status)) return true;
+  if (!err.response) return true; // network error / connection reset / timeout
+  return /aborted|ECONNRESET|socket hang up|ETIMEDOUT|ECONNREFUSED/i.test(err.message || '');
+}
+
+async function withRetry(fn, { retries = 2, delayMs = 5000 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransient(err) || attempt === retries) throw err;
+      console.warn(
+        `AI service call failed (${err.response?.status || err.message}); retrying in ${delayMs}ms…`
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw lastErr;
+}
+
 async function analyzePaper(payload) {
-  const { data } = await aiClient.post('/ai/analyze-paper', payload, {
-    headers: buildHeaders(),
-    timeout: 300000,
-  });
+  const { data } = await withRetry(() =>
+    aiClient.post('/ai/analyze-paper', payload, {
+      headers: buildHeaders(),
+      timeout: 300000,
+    })
+  );
   return data;
 }
 
 async function chat(payload) {
-  const { data } = await aiClient.post('/ai/chat', payload, {
-    headers: buildHeaders(),
-    timeout: 60000,
-  });
+  const { data } = await withRetry(
+    () =>
+      aiClient.post('/ai/chat', payload, {
+        headers: buildHeaders(),
+        timeout: 60000,
+      }),
+    { retries: 1, delayMs: 4000 }
+  );
   return data;
 }
 
