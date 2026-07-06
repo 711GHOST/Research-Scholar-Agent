@@ -23,7 +23,7 @@ function validateEnv() {
       jwtSecret.toLowerCase().includes(w)
     )
   ) {
-    problems.push('JWT_SECRET looks like a placeholder — set a unique random value');
+    problems.push('JWT_SECRET looks like a placeholder - set a unique random value');
   }
 
   if (isProduction) {
@@ -36,7 +36,7 @@ function validateEnv() {
     const message =
       'Invalid environment configuration:\n  - ' + problems.join('\n  - ');
     if (isProduction) {
-      // Hard fail in production — never boot with insecure config
+      // Hard fail in production - never boot with insecure config
       throw new Error(message);
     }
     // In development, warn loudly but allow the dev server to run

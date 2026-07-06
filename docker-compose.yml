@@ -1,5 +1,5 @@
 # Local/containerized deployment.
-# Secrets are read from a sibling `.env` file (see .env.example) — never hardcode
+# Secrets are read from a sibling `.env` file (see .env.example) - never hardcode
 # them here. The AI service is intentionally NOT published to the host; only the
 # backend can reach it over the internal network.
 
@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile
     container_name: research-scholar-ai
     restart: unless-stopped
-    # No host port mapping — reachable only as http://ai-service:8000 internally.
+    # No host port mapping - reachable only as http://ai-service:8000 internally.
     expose:
       - '8000'
     environment:

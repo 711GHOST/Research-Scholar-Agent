@@ -1,6 +1,6 @@
 import { createTheme } from '@mui/material/styles'
 
-// Brand palette — teal primary with a warm amber accent.
+// Brand palette - teal primary with a warm amber accent.
 const brand = {
   primary: '#0f766e',
   primaryLight: '#14b8a6',

@@ -188,7 +188,7 @@ const PaperDetailDialog = ({ open, onClose, paper }) => {
 
             <Divider sx={{ mt: 3 }} />
             <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-              Processed {summary.processedAt ? new Date(summary.processedAt).toLocaleString() : '—'} ·{' '}
+              Processed {summary.processedAt ? new Date(summary.processedAt).toLocaleString() : '-'} ·{' '}
               {summary.processingTime || 0}s · model {summary.aiModel || 'default'}
             </Typography>
           </Box>

@@ -18,10 +18,10 @@ a shared secret.
 ## 0. Prerequisites
 
 1. Push the repo to GitHub (all three folders in one repo is fine).
-2. **Rotate the secrets in `SECURITY.md`** — never deploy with the ones currently
+2. **Rotate the secrets in `SECURITY.md`** - never deploy with the ones currently
    in your local `.env` files.
-3. Have ready: a MongoDB Atlas cluster, a Gemini API key (optional), and — if you
-   want live email OTP / real payments — SMTP and Razorpay credentials.
+3. Have ready: a MongoDB Atlas cluster, a Gemini API key (optional), and - if you
+   want live email OTP / real payments - SMTP and Razorpay credentials.
 
 Generate two strong secrets now (you'll paste them into the dashboards):
 
@@ -45,10 +45,10 @@ openssl rand -hex 24
 
 ---
 
-## 2A. Backend + AI on **Render** (Blueprint — easiest)
+## 2A. Backend + AI on **Render** (Blueprint - easiest)
 
 The repo includes `render.yaml`, which provisions both services and links the
-shared secret automatically. No persistent disk is needed — PDFs are stored in
+shared secret automatically. No persistent disk is needed - PDFs are stored in
 MongoDB (GridFS), so this works on the **free tier**.
 
 1. Render → **New → Blueprint** → connect this repo → **Apply**.
@@ -66,9 +66,9 @@ MongoDB (GridFS), so this works on the **free tier**.
 
 Create two **Web Services** from the same repo, **Runtime: Docker**:
 
-- **AI service** — Root `ai-service`, Dockerfile `ai-service/Dockerfile`.
+- **AI service** - Root `ai-service`, Dockerfile `ai-service/Dockerfile`.
   Env: `AI_SERVICE_SECRET`, `GEMINI_API_KEY` (optional), `AI_ALLOWED_ORIGINS=<backend URL>`.
-- **Backend** — Root `backend`, Dockerfile `backend/Dockerfile`. No disk needed
+- **Backend** - Root `backend`, Dockerfile `backend/Dockerfile`. No disk needed
   (PDFs go to MongoDB/GridFS). Env: see the table at the bottom. Set
   `AI_SERVICE_SECRET` to the *same* value as the AI service.
 
@@ -134,13 +134,13 @@ curl https://<backend>/health
 
 ## 5. Production gotchas (read these)
 
-- **Uploaded PDFs are stored in MongoDB (GridFS)** — no persistent disk needed, so
+- **Uploaded PDFs are stored in MongoDB (GridFS)** - no persistent disk needed, so
   this runs on Render's free tier. Files survive redeploys and re-analysis works.
   (Atlas free tier = 512 MB; plenty for a demo. For heavy use, upgrade Atlas or
   switch the file store to S3/Backblaze.)
 - **OTP delivery.** With `OTP_DEV_MODE=false` and no SMTP configured, email
   verification returns 503. Set `SMTP_*` (Gmail app password, SendGrid, Resend,
-  etc.) to send real codes — or keep `OTP_DEV_MODE=true` only for a demo (it
+  etc.) to send real codes - or keep `OTP_DEV_MODE=true` only for a demo (it
   returns the code in the response, which is insecure for real users).
 - **Payments.** Without `RAZORPAY_KEY_ID/SECRET`, subscriptions run in **mock mode**
   (simulated success). Add real keys + set the webhook to
@@ -153,9 +153,9 @@ curl https://<backend>/health
   code (the analyze/chat endpoints now run in a threadpool so the `/health` check
   stays responsive, and PDF parsing uses the lighter `pypdf`). If you still see it:
   redeploy the **AI service** after pulling these changes; on the very first request
-  after idle, the free-tier service cold-starts (~30–60s) — the backend now retries
+  after idle, the free-tier service cold-starts (~30–60s) - the backend now retries
   automatically, so just try once more.
-- **Secrets.** Set every secret in the platform dashboard — never commit `.env`.
+- **Secrets.** Set every secret in the platform dashboard - never commit `.env`.
 - **Atlas IP allow-list** must include your host (or `0.0.0.0/0`).
 
 ---

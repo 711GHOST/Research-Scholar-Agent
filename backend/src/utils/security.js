@@ -45,7 +45,7 @@ function isBlockedIp(ip) {
     if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local
     if (lower.startsWith('fe80')) return true; // link-local
     if (lower.startsWith('::ffff:')) {
-      // IPv4-mapped IPv6 — re-check the embedded IPv4
+      // IPv4-mapped IPv6 - re-check the embedded IPv4
       return isBlockedIp(lower.split(':').pop());
     }
     return false;
@@ -131,7 +131,7 @@ async function downloadPdfSafely(rawUrl) {
 
   if (!looksLikePdf) {
     // Some servers send PDFs with a generic content-type, but if it is clearly
-    // HTML/JSON we reject it — that means we got a landing page, not a paper.
+    // HTML/JSON we reject it - that means we got a landing page, not a paper.
     if (contentType.includes('text/html') || contentType.includes('application/json')) {
       throw new Error('URL did not return a PDF document');
     }

@@ -95,7 +95,7 @@ async def health_check():
 # NOTE: these endpoints are declared with `def` (not `async def`) on purpose.
 # The work is CPU-bound and blocking (PDF parsing, NLTK, Gemini). FastAPI runs
 # sync path operations in a threadpool, which keeps the event loop free so the
-# /health check keeps responding — otherwise the host (e.g. Render) sees the
+# /health check keeps responding - otherwise the host (e.g. Render) sees the
 # service as unhealthy during a long analysis and restarts it mid-request,
 # which shows up as "502" / "stream has been aborted" on the caller.
 @app.post("/ai/analyze-paper", response_model=AnalyzePaperResponse)

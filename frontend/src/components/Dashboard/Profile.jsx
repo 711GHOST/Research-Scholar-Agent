@@ -45,7 +45,7 @@ const Field = ({ icon, label, value, action }) => (
           {label}
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
-          {value || '—'}
+          {value || '-'}
         </Typography>
       </Box>
     </Stack>

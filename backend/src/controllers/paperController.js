@@ -95,7 +95,7 @@ const uploadPaper = async (req, res, next) => {
 
     const { title, authors } = req.body;
 
-    // Store the bytes in GridFS (MongoDB) — no disk required.
+    // Store the bytes in GridFS (MongoDB) - no disk required.
     const fileId = await storePdf(req.file.buffer, req.file.originalname);
 
     const paper = await Paper.create({

@@ -216,7 +216,7 @@ cd ai-service
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
-# Set AI_SERVICE_SECRET to match backend/.env. GEMINI_API_KEY is optional —
+# Set AI_SERVICE_SECRET to match backend/.env. GEMINI_API_KEY is optional -
 # without it the service runs in deterministic "offline" mode.
 python app.py
 ```
@@ -449,7 +449,7 @@ research-scholar-agent/
 5. **Multi-language Support**: Support for papers in multiple languages
 6. **Real-time Collaboration**: WebSocket-based real-time features
 
-## 🚀 Deployment (Render — recommended for quick realtime-capable hosting)
+## 🚀 Deployment (Render - recommended for quick realtime-capable hosting)
 
 This repo is ready to deploy using Docker. The app is split into three services that can be deployed independently on Render (or Railway/Fly): `backend`, `ai-service`, and `frontend`. Render supports Docker deployments and provides managed databases (MongoDB) which is recommended for production.
 
@@ -501,7 +501,7 @@ Local quick deploy (same behavior as Render):
 docker-compose up -d
 ```
 
-Want me to create an optional GitHub Actions workflow to build the Docker images (and push to a registry) or a `render.yaml` to automate Render infra creation? Say “yes — create workflow” or “yes — create render.yaml” and I will add it.
+Want me to create an optional GitHub Actions workflow to build the Docker images (and push to a registry) or a `render.yaml` to automate Render infra creation? Say “yes - create workflow” or “yes - create render.yaml” and I will add it.
 
 
 ## 🔐 Security
@@ -515,10 +515,10 @@ documented in [SECURITY.md](SECURITY.md). Read it before deploying.
 ### Automated tests
 
 ```bash
-# Backend — Jest + Supertest with an in-memory MongoDB (no external services)
+# Backend - Jest + Supertest with an in-memory MongoDB (no external services)
 cd backend && npm test
 
-# AI service — pytest, runs fully offline (no Gemini key required)
+# AI service - pytest, runs fully offline (no Gemini key required)
 cd ai-service && pytest
 ```
 

@@ -1,4 +1,4 @@
-# Render Blueprint — deploys the backend + AI service from this repo.
+# Render Blueprint - deploys the backend + AI service from this repo.
 # In Render: New → Blueprint → connect the repo → it reads this file.
 # After the first deploy, set the values marked `sync: false` in the dashboard
 # and confirm the two service URLs below match what Render assigned.
@@ -25,7 +25,7 @@ services:
         value: https://rsa-backend.onrender.com   # <- set to the backend URL Render assigns
 
   # ---- Node/Express backend API ----
-  # PDFs are stored in MongoDB (GridFS), so NO persistent disk is required —
+  # PDFs are stored in MongoDB (GridFS), so NO persistent disk is required -
   # this works on Render's free tier.
   - type: web
     name: rsa-backend

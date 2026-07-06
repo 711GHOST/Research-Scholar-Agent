@@ -34,13 +34,13 @@ async function createOrder(planId, userId) {
     throw err;
   }
   if (plan.price <= 0) {
-    const err = new Error('This plan is free — no payment required');
+    const err = new Error('This plan is free - no payment required');
     err.statusCode = 400;
     throw err;
   }
 
   if (!isConfigured()) {
-    // Mock order — the frontend detects mock:true and simulates checkout.
+    // Mock order - the frontend detects mock:true and simulates checkout.
     return {
       mock: true,
       orderId: `mock_order_${crypto.randomBytes(8).toString('hex')}`,

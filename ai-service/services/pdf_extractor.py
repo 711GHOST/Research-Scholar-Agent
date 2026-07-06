@@ -64,7 +64,7 @@ class PDFExtractor:
         except Exception as e:
             print(f"pypdf extraction failed: {e}")
 
-        # 2) Fallback: pdfplumber (heavier — imported lazily so it isn't loaded
+        # 2) Fallback: pdfplumber (heavier - imported lazily so it isn't loaded
         #    into memory unless actually needed).
         try:
             import pdfplumber

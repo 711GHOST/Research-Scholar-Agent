@@ -47,7 +47,7 @@ const Discover = ({ onImported }) => {
   const [hasMore, setHasMore] = useState(false)
   const [nextOffset, setNextOffset] = useState(0)
   const [currentOffset, setCurrentOffset] = useState(0)
-  // Stack of source offsets for previous pages — enables exact Back navigation.
+  // Stack of source offsets for previous pages - enables exact Back navigation.
   const [offsetStack, setOffsetStack] = useState([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
@@ -90,7 +90,7 @@ const Discover = ({ onImported }) => {
     } catch (e) {
       const msg =
         e.response?.status === 429
-          ? 'Search rate limit reached — please wait a moment.'
+          ? 'Search rate limit reached - please wait a moment.'
           : e.response?.data?.message || 'Search failed'
       toast.error(msg)
     } finally {
@@ -118,7 +118,7 @@ const Discover = ({ onImported }) => {
         venue: paper.venue,
         topic: topic || '',
       })
-      toast.success(`Imported “${paper.title}” — analyzing in the background`)
+      toast.success(`Imported “${paper.title}” - analyzing in the background`)
     } catch (e) {
       toast.error(e.response?.data?.message || 'Import failed')
     } finally {
@@ -159,7 +159,7 @@ const Discover = ({ onImported }) => {
     }
     setBulkImporting(false)
     setSelected({})
-    toast.success(`Imported ${ok} paper${ok === 1 ? '' : 's'} — analysis running`)
+    toast.success(`Imported ${ok} paper${ok === 1 ? '' : 's'} - analysis running`)
     if (ok > 0 && onImported) onImported()
   }
 

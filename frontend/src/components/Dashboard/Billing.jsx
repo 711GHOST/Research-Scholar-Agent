@@ -82,7 +82,7 @@ const Billing = () => {
       const { data: order } = await api.post('/billing/checkout', { plan })
 
       if (order.mock) {
-        // No real gateway configured — simulate a successful payment.
+        // No real gateway configured - simulate a successful payment.
         await activate(plan, order.orderId, `mock_pay_${Date.now()}`)
         return
       }

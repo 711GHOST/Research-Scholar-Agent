@@ -171,8 +171,8 @@ async function arxivFetch(query, srcOffset, count) {
 /**
  * Collect exactly `pageSize` filtered results for one page using cursor-based
  * pagination. When filters (open-access / year) would drop items, we over-fetch
- * from the source to back-fill the page, and return `nextOffset` — the source
- * offset where the *next* page should resume — so paging never skips or repeats.
+ * from the source to back-fill the page, and return `nextOffset` - the source
+ * offset where the *next* page should resume - so paging never skips or repeats.
  */
 async function collectPage(fetcher, query, startOffset, pageSize, passes, needsBackfill) {
   const kept = [];
@@ -326,7 +326,7 @@ const importExternal = async (req, res) => {
       .slice(0, 80);
     const fileName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${safeTitle}.pdf`;
 
-    // Store the downloaded PDF in GridFS (MongoDB) — no disk required.
+    // Store the downloaded PDF in GridFS (MongoDB) - no disk required.
     const fileId = await storePdf(buffer, fileName);
 
     const Paper = require('../models/Paper');

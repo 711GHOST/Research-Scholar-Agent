@@ -52,7 +52,7 @@ async function requestOtp(userId, channel, target) {
     return { delivery: channel, devCode: undefined };
   }
 
-  // No provider configured — dev mode returns the code for local testing.
+  // No provider configured - dev mode returns the code for local testing.
   if (config.otpDevMode) {
     console.log(`[OTP dev] ${channel} code for ${target}: ${code}`);
     return { delivery: 'dev', devCode: code };

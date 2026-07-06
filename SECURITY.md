@@ -44,7 +44,7 @@ manager.
 **AI service (FastAPI)**
 - Requires a shared `x-internal-secret` header from the backend (set
   `AI_SERVICE_SECRET`); it must never be exposed publicly.
-- CORS restricted to the backend origin(s) — no wildcard-with-credentials.
+- CORS restricted to the backend origin(s) - no wildcard-with-credentials.
 - Validates base64, size, and PDF magic bytes before processing.
 - Runs as a non-root user in Docker and is not published to the host in
   `docker-compose`.

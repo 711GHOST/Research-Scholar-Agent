@@ -20,7 +20,7 @@ const PORT = config.port;
 if (config.mongoUri) {
   connectDB();
 } else {
-  console.warn('MONGODB_URI not set — skipping DB connection (smoke-test mode)');
+  console.warn('MONGODB_URI not set - skipping DB connection (smoke-test mode)');
 }
 
 const server = app.listen(PORT, () => {

@@ -1,5 +1,5 @@
 """
-AI service tests — run fully offline (no Gemini key, no network).
+AI service tests - run fully offline (no Gemini key, no network).
     cd ai-service && pytest
 """
 
